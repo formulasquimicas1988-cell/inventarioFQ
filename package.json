@@ -1,0 +1,13 @@
+{
+  "name": "formulasquimicas-inventario",
+  "version": "1.0.0",
+  "description": "Sistema de Inventario - Fórmulas Químicas",
+  "scripts": {
+    "build": "cd client && npm install && npm run build",
+    "start": "node server/index.js",
+    "install:server": "cd server && npm install"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
