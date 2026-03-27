@@ -11,6 +11,7 @@ const pool = mysql.createPool({
   connectionLimit:    10,
   queueLimit:         0,
   timezone:           'local',
+  family:             4, 
 });
 
 // Verificar conexión al iniciar
