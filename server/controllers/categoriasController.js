@@ -18,16 +18,24 @@ const getAll = async (req, res) => {
 
 // POST /api/categorias
 const create = async (req, res) => {
+  console.log('[POST /categorias] body:', JSON.stringify(req.body));
   const { nombre } = req.body;
-  if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es obligatorio' });
+  if (!nombre?.trim()) {
+    console.log('[POST /categorias] Falta nombre');
+    return res.status(400).json({ error: 'El nombre es obligatorio' });
+  }
   try {
+    console.log('[POST /categorias] Ejecutando INSERT con nombre:', nombre.trim());
     const [result] = await db.query(
       'INSERT INTO categorias (nombre) VALUES (?)',
       [nombre.trim()]
     );
+    console.log('[POST /categorias] INSERT result:', JSON.stringify(result));
     const [rows] = await db.query('SELECT * FROM categorias WHERE id = ?', [result.insertId]);
+    console.log('[POST /categorias] SELECT result:', JSON.stringify(rows));
     res.status(201).json(rows[0]);
   } catch (err) {
+    console.error('[POST /categorias] ERROR:', err.message, '| code:', err.code);
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Ya existe una categoría con ese nombre' });
     res.status(500).json({ error: err.message });
   }
