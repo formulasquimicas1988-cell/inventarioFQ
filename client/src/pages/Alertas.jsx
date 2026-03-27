@@ -20,7 +20,8 @@ export default function Alertas() {
   const loadData = useCallback(async () => {
     try {
       const { data } = await api.get('/productos');
-      const c = data.filter(p => parseFloat(p.stock_actual) < parseFloat(p.stock_minimo));
+      const arr = Array.isArray(data) ? data : [];
+      const c = arr.filter(p => parseFloat(p.stock_actual) < parseFloat(p.stock_minimo));
       c.sort((a, b) => {
         // Ordenar por diferencia más crítica primero
         const diffA = parseFloat(a.stock_actual) - parseFloat(a.stock_minimo);

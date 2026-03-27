@@ -41,8 +41,8 @@ export default function Danados() {
         api.get('/movimientos?tipo=dañado'),
         api.get('/productos'),
       ]);
-      setDanos(d.data);
-      setProductos(p.data);
+      setDanos(Array.isArray(d.data) ? d.data : []);
+      setProductos(Array.isArray(p.data) ? p.data : []);
     } catch (err) {
       toast({ type: 'error', title: 'Error', description: err.message });
     } finally {

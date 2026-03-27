@@ -172,7 +172,7 @@ export default function Reportes() {
     setDownloadingInvPDF(true);
     try {
       const { data: productos } = await api.get('/productos');
-      const doc = await buildInventarioPDF(productos);
+      const doc = await buildInventarioPDF(Array.isArray(productos) ? productos : []);
       doc.save(`inventario_${new Date().toISOString().slice(0,10)}.pdf`);
       toast({ title: 'PDF exportado', description: 'El inventario se descargó como PDF' });
     } catch (err) {
@@ -214,7 +214,7 @@ export default function Reportes() {
       if (tipoMov)  params.set('tipo', tipoMov);
 
       const { data: movimientos } = await api.get(`/movimientos?${params}`);
-      const doc = await buildMovimientosPDF(movimientos);
+      const doc = await buildMovimientosPDF(Array.isArray(movimientos) ? movimientos : []);
       doc.save(`movimientos_${new Date().toISOString().slice(0,10)}.pdf`);
       toast({ title: 'PDF exportado', description: 'El historial se descargó como PDF' });
     } catch (err) {

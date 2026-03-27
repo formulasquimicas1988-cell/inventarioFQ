@@ -69,13 +69,13 @@ export default function Productos() {
 
   const loadCategorias = useCallback(async () => {
     const { data } = await api.get('/categorias');
-    setCategorias(data);
+    setCategorias(Array.isArray(data) ? data : []);
   }, []);
 
   const loadProductos = useCallback(async () => {
     try {
       const { data } = await api.get('/productos');
-      setProductos(data);
+      setProductos(Array.isArray(data) ? data : []);
     } catch (e) {
       toast({ type: 'error', title: 'Error cargando productos', description: e.message });
     } finally {

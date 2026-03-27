@@ -31,7 +31,7 @@ export default function Categorias() {
   const load = useCallback(async () => {
     try {
       const { data } = await api.get('/categorias');
-      setCategorias(data);
+      setCategorias(Array.isArray(data) ? data : []);
     } catch (e) {
       toast({ type: 'error', title: 'Error', description: e.message });
     } finally {

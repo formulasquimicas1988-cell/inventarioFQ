@@ -49,7 +49,7 @@ export default function Historial() {
       if (fromDate)   params.set('from', fromDate);
       if (toDate)     params.set('to', toDate);
       const { data } = await api.get(`/movimientos?${params}`);
-      setMovimientos(data);
+      setMovimientos(Array.isArray(data) ? data : []);
     } catch (err) {
       toast({ type: 'error', title: 'Error', description: err.message });
     } finally {

@@ -41,8 +41,8 @@ export default function Entradas() {
         api.get('/movimientos?tipo=entrada'),
         api.get('/productos'),
       ]);
-      setEntradas(e.data);
-      setProductos(p.data);
+      setEntradas(Array.isArray(e.data) ? e.data : []);
+      setProductos(Array.isArray(p.data) ? p.data : []);
     } catch (err) {
       toast({ type: 'error', title: 'Error', description: err.message });
     } finally {

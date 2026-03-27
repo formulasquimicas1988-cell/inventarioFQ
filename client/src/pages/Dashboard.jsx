@@ -54,11 +54,11 @@ export default function Dashboard() {
       api.get('/dashboard/top-salidas'),
       api.get('/dashboard/menos-salidas'),
     ]).then(([s, r, c, top, menos]) => {
-      setStats(s.data);
-      setRecientes(r.data);
-      setChartData(c.data);
-      setTopSalidas(top.data);
-      setMenosSalidas(menos.data);
+      setStats(s.data || null);
+      setRecientes(Array.isArray(r.data) ? r.data : []);
+      setChartData(Array.isArray(c.data) ? c.data : []);
+      setTopSalidas(Array.isArray(top.data) ? top.data : []);
+      setMenosSalidas(Array.isArray(menos.data) ? menos.data : []);
     }).catch(console.error)
       .finally(() => setLoading(false));
   }, []);

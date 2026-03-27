@@ -44,8 +44,8 @@ export default function Ajustes() {
         api.get('/movimientos?tipo=ajuste'),
         api.get('/productos'),
       ]);
-      setAjustes(a.data);
-      setProductos(p.data);
+      setAjustes(Array.isArray(a.data) ? a.data : []);
+      setProductos(Array.isArray(p.data) ? p.data : []);
     } catch (err) {
       toast({ type: 'error', title: 'Error', description: err.message });
     } finally {
