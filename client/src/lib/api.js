@@ -1,15 +1,22 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api',
-  timeout: 15000,
+  baseURL: import.meta.env.VITE_API_URL || '',
+  timeout: 30000,
 });
 
-// Interceptor para errores
 api.interceptors.response.use(
   res => res,
   err => {
-    const msg = err.response?.data?.error || err.message || 'Error de conexión';
+    const status = err.response?.status;
+
+    // Server down or unreachable
+    if (!err.response || status === 502 || status === 503 || status === 504) {
+      return Promise.reject(new Error('El servidor no está disponible. Verifica que el backend esté corriendo.'));
+    }
+
+    // Conflict / validation errors — pass server message through
+    const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Error desconocido';
     return Promise.reject(new Error(msg));
   }
 );

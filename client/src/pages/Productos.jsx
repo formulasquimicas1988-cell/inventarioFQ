@@ -1,465 +1,568 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Pencil, Trash2, Package, Upload, Download, Filter, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Pencil, Trash2, Plus, FileUp, FileDown, ChevronUp, ChevronDown } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
-import { useAlerts } from '../context/AlertContext';
-import { formatNumber } from '../lib/utils';
-import Modal         from '../components/ui/Modal';
+import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
-import SafeButton    from '../components/ui/SafeButton';
-import SearchInput   from '../components/ui/SearchInput';
-import EmptyState    from '../components/ui/EmptyState';
-import PageLoader    from '../components/ui/PageLoader';
-import Pagination    from '../components/ui/Pagination';
+import SearchInput from '../components/ui/SearchInput';
+import SafeButton from '../components/ui/SafeButton';
+import Pagination from '../components/ui/Pagination';
+import PageLoader from '../components/ui/PageLoader';
+import EmptyState from '../components/ui/EmptyState';
+import { getStockBadge, getStockStatus } from '../lib/utils';
 import { useSortable } from '../hooks/useSortable';
+import { useUser } from '../context/UserContext';
 
-const PAGE_SIZE = 15;
+const UNIDADES = ['Litros', 'Kilos', 'Gramos', 'Unidades', 'Cajas', 'Galones', 'Toneladas', 'Metros'];
 
-const EMPTY_FORM = {
-  codigo: '', nombre: '', categoria_id: '',
-  stock_actual: '', stock_minimo: '',
-  unidad_medida: 'litro',
-};
-
-const UNIDADES = ['litro', 'kg', 'gramo', 'mililitro', 'unidad', 'caja', 'galón', 'tambor'];
-
-function SortTh({ col, label, sortKey, sortDir, onSort, className = '' }) {
-  const active = sortKey === col;
-  return (
-    <th className={`cursor-pointer select-none hover:opacity-75 ${className}`} onClick={() => onSort(col)}>
-      <span className="inline-flex items-center gap-1">
-        {label}
-        {active
-          ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />)
-          : <ChevronsUpDown size={13} className="opacity-30" />
-        }
-      </span>
-    </th>
-  );
+function getStatusLabel(stockActual, stockMinimo) {
+  const s = getStockStatus(stockActual, stockMinimo);
+  if (s === 'critico') return 'Crítico';
+  if (s === 'bajo') return 'Bajo';
+  return 'OK';
 }
 
+const emptyForm = {
+  codigo: '',
+  nombre: '',
+  categoria_id: '',
+  stock_actual: '',
+  stock_minimo: '',
+  unidad_medida: 'Litros',
+  unidad_custom: '',
+};
+
 export default function Productos() {
-  const { toast }       = useToast();
-  const { refresh: refreshAlerts } = useAlerts();
-  const fileRef         = useRef();
+  const { success, error } = useToast();
+  const { usuario } = useUser();
+  const [productos, setProductos] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [search, setSearch] = useState('');
+  const [categoriaFilter, setCategoriaFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [deleteItem, setDeleteItem] = useState(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const searchDebounce = useRef(null);
+  const fileInputRef = useRef(null);
+  const { sorted: productosSorted, sortKey, sortDir, handleSort } = useSortable(productos, 'nombre');
 
-  const [productos,   setProductos]   = useState([]);
-  const [filtered,    setFiltered]    = useState([]);
-  const [categorias,  setCategorias]  = useState([]);
-  const [search,      setSearch]      = useState('');
-  const [catFilter,   setCatFilter]   = useState('');
-  const [searching,   setSearching]   = useState(false);
-  const [loading,     setLoading]     = useState(true);
-  const [page,        setPage]        = useState(1);
-
-  const { sorted, sortKey, sortDir, toggleSort } = useSortable(filtered, 'nombre');
-
-  const [modalOpen,   setModalOpen]   = useState(false);
-  const [editItem,    setEditItem]    = useState(null);
-  const [form,        setForm]        = useState(EMPTY_FORM);
-  const [saving,      setSaving]      = useState(false);
-  const [errors,      setErrors]      = useState({});
-
-  const [delOpen,     setDelOpen]     = useState(false);
-  const [delItem,     setDelItem]     = useState(null);
-  const [deleting,    setDeleting]    = useState(false);
-
-  const [importing,   setImporting]   = useState(false);
-
-  const loadCategorias = useCallback(async () => {
-    const { data } = await api.get('/categorias');
-    setCategorias(Array.isArray(data) ? data : []);
-  }, []);
-
-  const loadProductos = useCallback(async () => {
+  const fetchProductos = useCallback(async (searchVal, catVal, pageVal) => {
+    setLoading(true);
     try {
-      const { data } = await api.get('/productos');
-      setProductos(Array.isArray(data) ? data : []);
-    } catch (e) {
-      toast({ type: 'error', title: 'Error cargando productos', description: e.message });
+      const params = { page: pageVal, limit: 20 };
+      if (searchVal) params.search = searchVal;
+      if (catVal) params.categoria_id = catVal;
+      const res = await api.get('/api/productos', { params });
+      const data = res.data;
+      if (Array.isArray(data)) {
+        setProductos(data);
+        setTotal(data.length);
+        setTotalPages(1);
+      } else {
+        setProductos(Array.isArray(data?.data) ? data.data : []);
+        setTotal(data?.total || 0);
+        setTotalPages(data?.totalPages || 1);
+      }
+    } catch (err) {
+      error('Error al cargar productos');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [error]);
 
   useEffect(() => {
-    loadCategorias();
-    loadProductos();
-  }, [loadCategorias, loadProductos]);
+    api.get('/api/categorias').then(res => {
+      setCategorias(Array.isArray(res.data) ? res.data : []);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
-    setSearching(true);
-    const t = setTimeout(() => {
-      const s = search.toLowerCase();
-      let result = productos;
-      if (s) {
-        result = result.filter(p =>
-          p.codigo.toLowerCase().includes(s) ||
-          p.nombre.toLowerCase().includes(s) ||
-          (p.categoria_nombre || '').toLowerCase().includes(s)
-        );
-      }
-      if (catFilter) {
-        result = result.filter(p => String(p.categoria_id) === catFilter);
-      }
-      setFiltered(result);
+    clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => {
       setPage(1);
-      setSearching(false);
+      fetchProductos(search, categoriaFilter, 1);
     }, 300);
-    return () => clearTimeout(t);
-  }, [search, catFilter, productos]);
+  }, [search, categoriaFilter]);
 
-  useEffect(() => { setPage(1); }, [sortKey, sortDir]);
+  useEffect(() => {
+    fetchProductos(search, categoriaFilter, page);
+  }, [page]);
 
-  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
-  const paginated  = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  function openCreate() {
+  const openCreate = () => {
     setEditItem(null);
-    setForm(EMPTY_FORM);
-    setErrors({});
-    setModalOpen(true);
-  }
+    setForm(emptyForm);
+    setShowModal(true);
+  };
 
-  function openEdit(p) {
+  const openEdit = (p) => {
     setEditItem(p);
+    const isCustom = !UNIDADES.includes(p.unidad_medida);
     setForm({
-      codigo:        p.codigo,
-      nombre:        p.nombre,
-      categoria_id:  p.categoria_id ? String(p.categoria_id) : '',
-      stock_actual:  String(p.stock_actual),
-      stock_minimo:  String(p.stock_minimo),
-      unidad_medida: p.unidad_medida || 'litro',
+      codigo: p.codigo || '',
+      nombre: p.nombre || '',
+      categoria_id: p.categoria_id || '',
+      stock_actual: '',
+      stock_minimo: p.stock_minimo != null ? String(p.stock_minimo) : '',
+      unidad_medida: isCustom ? '__custom__' : (p.unidad_medida || 'Litros'),
+      unidad_custom: isCustom ? (p.unidad_medida || '') : '',
     });
-    setErrors({});
-    setModalOpen(true);
-  }
+    setShowModal(true);
+  };
 
-  function validate() {
-    const e = {};
-    if (!form.codigo.trim())  e.codigo = 'El código es obligatorio';
-    if (!form.nombre.trim())  e.nombre = 'El nombre es obligatorio';
-    if (form.stock_actual === '' || isNaN(form.stock_actual)) e.stock_actual = 'Debe ser un número';
-    if (form.stock_minimo === '' || isNaN(form.stock_minimo)) e.stock_minimo = 'Debe ser un número';
-    return e;
-  }
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditItem(null);
+    setForm(emptyForm);
+  };
 
-  async function handleSave() {
-    const e = validate();
-    if (Object.keys(e).length) { setErrors(e); return; }
-    if (saving) return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.codigo.trim() || !form.nombre.trim()) {
+      error('Código y nombre son obligatorios');
+      return;
+    }
+    const unidad = form.unidad_medida === '__custom__' ? form.unidad_custom.trim() : form.unidad_medida;
+    if (!unidad) {
+      error('Especifica la unidad de medida');
+      return;
+    }
+    if (!editItem && form.stock_actual !== '' && parseFloat(form.stock_actual) < 0) {
+      error('El stock inicial no puede ser negativo');
+      return;
+    }
+    if (form.stock_minimo !== '' && parseFloat(form.stock_minimo) < 0) {
+      error('El stock mínimo no puede ser negativo');
+      return;
+    }
+    const payload = {
+      codigo: form.codigo.trim(),
+      nombre: form.nombre.trim(),
+      categoria_id: form.categoria_id || null,
+      stock_minimo: form.stock_minimo !== '' ? parseFloat(form.stock_minimo) : 0,
+      unidad_medida: unidad,
+    };
+    if (!editItem) {
+      payload.stock_actual = form.stock_actual !== '' ? parseFloat(form.stock_actual) : 0;
+      payload.usuario = usuario;
+    }
     setSaving(true);
     try {
-      const payload = {
-        ...form,
-        categoria_id: form.categoria_id || null,
-        stock_actual: parseFloat(form.stock_actual),
-        stock_minimo: parseFloat(form.stock_minimo),
-      };
       if (editItem) {
-        await api.put(`/productos/${editItem.id}`, payload);
-        toast({ title: 'Producto actualizado' });
+        await api.put(`/api/productos/${editItem.id}`, payload);
+        success('Producto actualizado correctamente');
       } else {
-        await api.post('/productos', payload);
-        toast({ title: 'Producto creado' });
+        await api.post('/api/productos', payload);
+        success('Producto creado correctamente');
       }
-      setModalOpen(false);
-      loadProductos();
-      refreshAlerts();
+      handleCloseModal();
+      fetchProductos(search, categoriaFilter, page);
     } catch (err) {
-      toast({ type: 'error', title: 'Error', description: err.message });
+      error(err?.response?.data?.message || 'Error al guardar el producto');
     } finally {
       setSaving(false);
     }
-  }
+  };
 
-  function openDelete(p) { setDelItem(p); setDelOpen(true); }
-
-  async function handleDelete() {
-    setDeleting(true);
+  const handleDelete = async () => {
+    if (!deleteItem) return;
     try {
-      const { data } = await api.delete(`/productos/${delItem.id}`);
-      toast({ title: data.message || 'Producto eliminado' });
-      setDelOpen(false);
-      loadProductos();
-      refreshAlerts();
+      await api.delete(`/api/productos/${deleteItem.id}`);
+      success('Producto eliminado correctamente');
+      setDeleteItem(null);
+      fetchProductos(search, categoriaFilter, page);
     } catch (err) {
-      toast({ type: 'error', title: 'Error', description: err.message });
-    } finally {
-      setDeleting(false);
+      error(err?.response?.data?.message || 'Error al eliminar el producto');
     }
-  }
+  };
 
-  async function handleImport(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setImporting(true);
+  const handleImport = async (e) => {
+    e.preventDefault();
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      error('Selecciona un archivo Excel');
+      return;
+    }
+    setImportLoading(true);
+    setImportResult(null);
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const { data } = await api.post('/productos/import', formData, {
+      const res = await api.post('/api/productos/importar/excel', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast({
-        title: `Importación completada`,
-        description: `${data.insertados} producto(s) importados${data.errores?.length ? `, ${data.errores.length} error(es)` : ''}`,
-      });
-      loadProductos();
-      refreshAlerts();
+      setImportResult(res.data);
+      const total = (res.data?.insertados || 0) + (res.data?.actualizados || 0);
+      if (total > 0) {
+        success(`Importación completada: ${res.data.insertados} nuevos, ${res.data.actualizados} actualizados`);
+        fetchProductos(search, categoriaFilter, 1);
+      }
     } catch (err) {
-      toast({ type: 'error', title: 'Error al importar', description: err.message });
+      error(err?.response?.data?.message || 'Error al importar el archivo');
     } finally {
-      setImporting(false);
-      e.target.value = '';
+      setImportLoading(false);
     }
-  }
+  };
 
-  function downloadTemplate() {
-    const data = [
-      ['codigo', 'nombre', 'categoria', 'stock_actual', 'stock_minimo', 'unidad_medida'],
-      ['DEG-001', 'Desengrasante Pro', 'Desengrasantes', 50, 20, 'litro'],
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Productos');
-    XLSX.writeFile(wb, 'plantilla_productos.xlsx');
-  }
-
-  if (loading) return <PageLoader />;
-
-  const criticos = productos.filter(p => parseFloat(p.stock_actual) < parseFloat(p.stock_minimo));
+  const downloadTemplate = () => {
+    const csvContent = 'codigo,nombre,unidad_medida,categoria,stock_actual,stock_minimo\nEJ001,Ejemplo Producto,Litros,Categoria A,100,10\n';
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla_productos.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div>
-      {/* Header */}
-      <div className="page-header flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">Productos</h1>
-          <p className="page-subtitle">
-            {productos.length} productos · {criticos.length > 0 && (
-              <span className="text-primary font-semibold">{criticos.length} con stock crítico</span>
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <button className="btn btn-ghost btn-sm" onClick={downloadTemplate} title="Descargar plantilla Excel">
-            <Download size={18} />
-            Plantilla
-          </button>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => fileRef.current.click()}
-            disabled={importing}
-          >
-            {importing ? <span className="spinner" /> : <Upload size={18} />}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-bold text-brand-blue">Productos</h1>
+        <div className="flex gap-2 flex-wrap">
+          <SafeButton onClick={() => setShowImport(true)} variant="ghost">
+            <FileUp className="w-4 h-4" />
             Importar Excel
-          </button>
-          <input type="file" ref={fileRef} className="hidden" accept=".xlsx,.xls" onChange={handleImport} />
-          <button className="btn-primary" onClick={openCreate}>
-            <Plus size={20} />
+          </SafeButton>
+          <SafeButton onClick={openCreate} variant="primary">
+            <Plus className="w-4 h-4" />
             Nuevo Producto
-          </button>
+          </SafeButton>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="flex gap-4 mb-5 flex-wrap">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Buscar por código, nombre o categoría..."
-          loading={searching}
-          className="flex-1 min-w-[220px]"
-        />
-        <div className="relative flex items-center">
-          <Filter size={16} className="absolute left-3 text-gray-400 pointer-events-none" />
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por código o nombre..."
+            className="flex-1"
+          />
           <select
-            className="input pl-9 pr-8 min-w-[180px]"
-            value={catFilter}
-            onChange={e => setCatFilter(e.target.value)}
+            value={categoriaFilter}
+            onChange={(e) => setCategoriaFilter(e.target.value)}
+            className="min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red bg-white"
           >
             <option value="">Todas las categorías</option>
-            {categorias.map(c => (
-              <option key={c.id} value={String(c.id)}>{c.nombre}</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
           </select>
         </div>
-      </div>
 
-      {/* Tabla */}
-      <div className="table-container">
-        <table className="table">
-          <thead>
-            <tr>
-              <SortTh col="codigo"           label="Código"       sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortTh col="nombre"           label="Nombre"       sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortTh col="categoria_nombre" label="Categoría"    sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortTh col="stock_actual"     label="Stock Actual" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
-              <SortTh col="stock_minimo"     label="Stock Mínimo" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
-              <th>Unidad</th>
-              <th className="text-center">Estado</th>
-              <th className="text-center">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginated.length === 0 ? (
-              <tr>
-                <td colSpan={8}>
-                  <EmptyState
-                    message={search || catFilter ? 'No se encontraron productos con ese criterio' : 'Sin productos registrados'}
-                    icon={Package}
-                  />
-                </td>
-              </tr>
-            ) : paginated.map(p => {
-              const esCritico = parseFloat(p.stock_actual) < parseFloat(p.stock_minimo);
-              return (
-                <tr key={p.id} className={esCritico ? 'bg-red-50/30' : ''}>
-                  <td>
-                    <span className="font-mono font-semibold text-deep-blue bg-blue-50 px-2 py-0.5 rounded text-sm">
-                      {p.codigo}
-                    </span>
-                  </td>
-                  <td className="font-semibold text-gray-800">{p.nombre}</td>
-                  <td>
-                    {p.categoria_nombre
-                      ? <span className="badge badge-blue">{p.categoria_nombre}</span>
-                      : <span className="text-gray-300">—</span>
-                    }
-                  </td>
-                  <td className="text-right font-bold text-gray-800">{formatNumber(p.stock_actual)}</td>
-                  <td className="text-right text-gray-500">{formatNumber(p.stock_minimo)}</td>
-                  <td className="text-gray-500 text-sm">{p.unidad_medida}</td>
-                  <td className="text-center">
-                    {esCritico
-                      ? <span className="badge badge-red">⚠ Crítico</span>
-                      : <span className="badge badge-green">OK</span>
-                    }
-                  </td>
-                  <td>
-                    <div className="flex items-center justify-center gap-2">
-                      <button className="btn-icon btn-ghost text-blue-600 hover:bg-blue-50" onClick={() => openEdit(p)} title="Editar">
-                        <Pencil size={18} />
-                      </button>
-                      <button className="btn-icon btn-ghost text-red-500 hover:bg-red-50" onClick={() => openDelete(p)} title="Eliminar">
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <Pagination page={page} totalPages={totalPages} onChange={setPage} total={sorted.length} pageSize={PAGE_SIZE} />
-
-      {/* Modal Crear/Editar */}
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onConfirm={handleSave}
-        title={editItem ? 'Editar Producto' : 'Nuevo Producto'}
-        size="lg"
-        footer={
+        {loading ? (
+          <PageLoader />
+        ) : productos.length === 0 ? (
+          <EmptyState
+            message={search || categoriaFilter ? 'No se encontraron productos con ese criterio' : 'No hay productos registrados'}
+            action={(!search && !categoriaFilter) ? { label: 'Nuevo Producto', onClick: openCreate } : undefined}
+          />
+        ) : (
           <>
-            <button className="btn btn-ghost" onClick={() => setModalOpen(false)} disabled={saving}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    {[
+                      { key: 'codigo', label: 'Código', align: 'left' },
+                      { key: 'nombre', label: 'Nombre', align: 'left' },
+                      { key: 'categoria_nombre', label: 'Categoría', align: 'left' },
+                      { key: 'stock_actual', label: 'Stock Actual', align: 'right' },
+                      { key: 'stock_minimo', label: 'Stock Mín.', align: 'right' },
+                      { key: 'unidad_medida', label: 'Unidad', align: 'left' },
+                    ].map(({ key, label, align }) => (
+                      <th
+                        key={key}
+                        onClick={() => handleSort(key)}
+                        className={`py-3 px-3 text-slate-500 font-medium cursor-pointer select-none hover:text-slate-700 ${align === 'right' ? 'text-right' : 'text-left'}`}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {label}
+                          {sortKey === key
+                            ? sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                            : <ChevronUp className="w-3 h-3 opacity-20" />}
+                        </span>
+                      </th>
+                    ))}
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Estado</th>
+                    <th className="text-right py-3 px-3 text-slate-500 font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productosSorted.map((p) => (
+                    <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50" style={{ minHeight: '56px' }}>
+                      <td className="py-3 px-3 font-mono text-slate-600 text-xs">{p.codigo}</td>
+                      <td className="py-3 px-3 font-medium text-slate-800">{p.nombre}</td>
+                      <td className="py-3 px-3 text-slate-500">{p.categoria_nombre || '—'}</td>
+                      <td className="py-3 px-3 text-right font-semibold text-slate-700">
+                        {Number(p.stock_actual || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-3 text-right text-slate-500">
+                        {Number(p.stock_minimo || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500">{p.unidad_medida}</td>
+                      <td className="py-3 px-3">
+                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${getStockBadge(p.stock_actual, p.stock_minimo)}`}>
+                          {getStatusLabel(p.stock_actual, p.stock_minimo)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openEdit(p)}
+                            title="Editar"
+                            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteItem(p)}
+                            title="Eliminar"
+                            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              limit={20}
+              onPageChange={setPage}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Create/Edit Modal */}
+      <Modal
+        isOpen={showModal}
+        onClose={handleCloseModal}
+        title={editItem ? 'Editar Producto' : 'Nuevo Producto'}
+        size="md"
+      >
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Código <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.codigo}
+                onChange={(e) => setForm((f) => ({ ...f, codigo: e.target.value }))}
+                placeholder="Ej. PROD001"
+                required
+                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Nombre <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.nombre}
+                onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+                placeholder="Nombre del producto"
+                required
+                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Categoría</label>
+              <select
+                value={form.categoria_id}
+                onChange={(e) => setForm((f) => ({ ...f, categoria_id: e.target.value }))}
+                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red bg-white"
+              >
+                <option value="">Sin categoría</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Unidad de Medida</label>
+              <select
+                value={form.unidad_medida}
+                onChange={(e) => setForm((f) => ({ ...f, unidad_medida: e.target.value }))}
+                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red bg-white"
+              >
+                {UNIDADES.map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+                <option value="__custom__">Otra (especificar)</option>
+              </select>
+            </div>
+          </div>
+
+          {form.unidad_medida === '__custom__' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Unidad personalizada</label>
+              <input
+                type="text"
+                value={form.unidad_custom}
+                onChange={(e) => setForm((f) => ({ ...f, unidad_custom: e.target.value }))}
+                placeholder="Ej. Toneladas cortas, Piezas..."
+                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {!editItem && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Stock Inicial</label>
+                <input
+                  type="number"
+                  value={form.stock_actual}
+                  onChange={(e) => setForm((f) => ({ ...f, stock_actual: e.target.value }))}
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                />
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Stock Mínimo</label>
+              <input
+                type="number"
+                value={form.stock_minimo}
+                onChange={(e) => setForm((f) => ({ ...f, stock_minimo: e.target.value }))}
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={handleCloseModal}
+              className="min-h-[48px] px-5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors"
+            >
               Cancelar
             </button>
-            <SafeButton className="btn-primary" onClick={handleSave} disabled={saving}>
-              {saving && <span className="spinner" />}
+            <SafeButton type="submit" loading={saving} variant="primary">
               {editItem ? 'Guardar Cambios' : 'Crear Producto'}
             </SafeButton>
-          </>
-        }
-      >
-        <div className="form-grid-2 gap-5">
-          <div className="form-group">
-            <label className="label">Código <span className="text-primary">*</span></label>
-            <input
-              className={`input ${errors.codigo ? 'input-error' : ''}`}
-              value={form.codigo}
-              onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))}
-              placeholder="Ej: DEG-001"
-              maxLength={50}
-            />
-            {errors.codigo && <p className="text-sm text-red-500">{errors.codigo}</p>}
           </div>
-          <div className="form-group">
-            <label className="label">Categoría</label>
-            <select
-              className="input"
-              value={form.categoria_id}
-              onChange={e => setForm(f => ({ ...f, categoria_id: e.target.value }))}
-            >
-              <option value="">Sin categoría</option>
-              {categorias.map(c => (
-                <option key={c.id} value={String(c.id)}>{c.nombre}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label className="label">Nombre <span className="text-primary">*</span></label>
-          <input
-            className={`input ${errors.nombre ? 'input-error' : ''}`}
-            value={form.nombre}
-            onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-            placeholder="Nombre del producto"
-            maxLength={200}
-          />
-          {errors.nombre && <p className="text-sm text-red-500">{errors.nombre}</p>}
-        </div>
-
-        <div className="form-grid-2 gap-5">
-          <div className="form-group">
-            <label className="label">Stock Actual <span className="text-primary">*</span></label>
-            <input
-              type="number" step="0.01" min="0"
-              className={`input ${errors.stock_actual ? 'input-error' : ''}`}
-              value={form.stock_actual}
-              onChange={e => setForm(f => ({ ...f, stock_actual: e.target.value }))}
-              placeholder="0"
-            />
-            {errors.stock_actual && <p className="text-sm text-red-500">{errors.stock_actual}</p>}
-          </div>
-          <div className="form-group">
-            <label className="label">Stock Mínimo <span className="text-primary">*</span></label>
-            <input
-              type="number" step="0.01" min="0"
-              className={`input ${errors.stock_minimo ? 'input-error' : ''}`}
-              value={form.stock_minimo}
-              onChange={e => setForm(f => ({ ...f, stock_minimo: e.target.value }))}
-              placeholder="0"
-            />
-            {errors.stock_minimo && <p className="text-sm text-red-500">{errors.stock_minimo}</p>}
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label className="label">Unidad de Medida</label>
-          <select
-            className="input"
-            value={form.unidad_medida}
-            onChange={e => setForm(f => ({ ...f, unidad_medida: e.target.value }))}
-          >
-            {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
+        </form>
       </Modal>
 
       {/* Confirm Delete */}
       <ConfirmDialog
-        open={delOpen}
-        onClose={() => setDelOpen(false)}
+        isOpen={!!deleteItem}
+        onClose={() => setDeleteItem(null)}
         onConfirm={handleDelete}
-        loading={deleting}
         title="Eliminar Producto"
-        message={`¿Estás seguro de eliminar "${delItem?.nombre}" (${delItem?.codigo})? Si tiene historial de movimientos, será desactivado en lugar de eliminado.`}
+        message={`¿Eliminar el producto "${deleteItem?.nombre}"? Esta acción no se puede deshacer.`}
+        confirmText="Eliminar"
       />
+
+      {/* Import Excel Modal */}
+      <Modal
+        isOpen={showImport}
+        onClose={() => { setShowImport(false); setImportResult(null); }}
+        title="Importar Productos desde Excel"
+        size="md"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-600">
+            <p className="font-semibold mb-2">Columnas requeridas:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><code className="bg-slate-200 px-1 rounded">codigo</code> — Código único del producto</li>
+              <li><code className="bg-slate-200 px-1 rounded">nombre</code> — Nombre del producto</li>
+              <li><code className="bg-slate-200 px-1 rounded">unidad_medida</code> — Ej: Litros, Kilos</li>
+            </ul>
+            <p className="font-semibold mt-3 mb-2">Columnas opcionales:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><code className="bg-slate-200 px-1 rounded">categoria</code></li>
+              <li><code className="bg-slate-200 px-1 rounded">stock_actual</code></li>
+              <li><code className="bg-slate-200 px-1 rounded">stock_minimo</code></li>
+            </ul>
+          </div>
+
+          <button
+            type="button"
+            onClick={downloadTemplate}
+            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium self-start"
+          >
+            <FileDown className="w-4 h-4" />
+            Descargar Plantilla CSV
+          </button>
+
+          <form onSubmit={handleImport} className="flex flex-col gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Archivo Excel (.xlsx, .xls, .csv)
+              </label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+              />
+            </div>
+
+            {importResult && (
+              <div className={`rounded-lg p-4 text-sm ${(importResult.insertados > 0 || importResult.actualizados > 0) ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                <p className="font-semibold">
+                  {importResult.insertados > 0 && <span>{importResult.insertados} nuevos. </span>}
+                  {importResult.actualizados > 0 && <span>{importResult.actualizados} actualizados. </span>}
+                  {importResult.insertados === 0 && importResult.actualizados === 0 && <span>No se procesó ningún producto.</span>}
+                </p>
+                {importResult.errores && importResult.errores.length > 0 && (
+                  <ul className="mt-2 list-disc list-inside space-y-1 text-xs">
+                    {importResult.errores.map((e, i) => (
+                      <li key={i}>{e}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => { setShowImport(false); setImportResult(null); }}
+                className="min-h-[48px] px-5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors"
+              >
+                Cerrar
+              </button>
+              <SafeButton type="submit" loading={importLoading} variant="primary">
+                <FileUp className="w-4 h-4" />
+                Importar
+              </SafeButton>
+            </div>
+          </form>
+        </div>
+      </Modal>
     </div>
   );
 }

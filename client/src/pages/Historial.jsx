@@ -1,201 +1,244 @@
-import { useState, useEffect, useCallback } from 'react';
-import { History, Filter, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { FileDown } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from '../context/ToastContext';
-import { formatDate, formatNumber, tipoMovBadge } from '../lib/utils';
 import SearchInput from '../components/ui/SearchInput';
-import EmptyState  from '../components/ui/EmptyState';
-import PageLoader  from '../components/ui/PageLoader';
-import Pagination  from '../components/ui/Pagination';
-import { useSortable } from '../hooks/useSortable';
+import SafeButton from '../components/ui/SafeButton';
+import Pagination from '../components/ui/Pagination';
+import PageLoader from '../components/ui/PageLoader';
+import EmptyState from '../components/ui/EmptyState';
+import { formatDate } from '../lib/utils';
 
-const PAGE_SIZE = 20;
+const TIPO_OPTIONS = [
+  { value: '', label: 'Todos' },
+  { value: 'entrada', label: 'Entrada' },
+  { value: 'salida', label: 'Salida' },
+  { value: 'ajuste', label: 'Ajuste' },
+  { value: 'danado', label: 'Dañado' },
+];
 
-function SortTh({ col, label, sortKey, sortDir, onSort, className = '' }) {
-  const active = sortKey === col;
-  return (
-    <th className={`cursor-pointer select-none hover:opacity-75 ${className}`} onClick={() => onSort(col)}>
-      <span className="inline-flex items-center gap-1">
-        {label}
-        {active
-          ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />)
-          : <ChevronsUpDown size={13} className="opacity-30" />
-        }
-      </span>
-    </th>
-  );
-}
+const TIPO_BADGE = {
+  entrada: 'bg-green-500 text-white',
+  salida: 'bg-red-500 text-white',
+  ajuste: 'bg-amber-500 text-white',
+  danado: 'bg-orange-500 text-white',
+};
+
+const TIPO_LABEL = {
+  entrada: 'Entrada',
+  salida: 'Salida',
+  ajuste: 'Ajuste',
+  danado: 'Dañado',
+};
 
 export default function Historial() {
-  const { toast } = useToast();
-
+  const { error } = useToast();
   const [movimientos, setMovimientos] = useState([]);
-  const [filtered,    setFiltered]    = useState([]);
-  const [search,      setSearch]      = useState('');
-  const [searching,   setSearching]   = useState(false);
-  const [tipoFilter,  setTipoFilter]  = useState('');
-  const [fromDate,    setFromDate]    = useState('');
-  const [toDate,      setToDate]      = useState('');
-  const [loading,     setLoading]     = useState(true);
-  const [page,        setPage]        = useState(1);
+  const [search, setSearch] = useState('');
+  const [tipo, setTipo] = useState('');
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const debounceRef = useRef(null);
 
-  const { sorted, sortKey, sortDir, toggleSort } = useSortable(filtered, 'fecha', 'desc');
-
-  const loadData = useCallback(async () => {
+  const fetchMovimientos = async (searchVal, tipoVal, fechaInicioVal, fechaFinVal, pageVal) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (tipoFilter) params.set('tipo', tipoFilter);
-      if (fromDate)   params.set('from', fromDate);
-      if (toDate)     params.set('to', toDate);
-      const { data } = await api.get(`/movimientos?${params}`);
-      setMovimientos(Array.isArray(data) ? data : []);
+      const params = { page: pageVal, limit: 50 };
+      if (searchVal) params.search = searchVal;
+      if (tipoVal) params.tipo = tipoVal;
+      if (fechaInicioVal) params.fecha_inicio = fechaInicioVal;
+      if (fechaFinVal) params.fecha_fin = fechaFinVal;
+      const res = await api.get('/api/movimientos', { params });
+      const data = res.data;
+      if (Array.isArray(data)) {
+        setMovimientos(data);
+        setTotal(data.length);
+        setTotalPages(1);
+      } else {
+        setMovimientos(Array.isArray(data?.data) ? data.data : []);
+        setTotal(data?.total || 0);
+        setTotalPages(data?.totalPages || 1);
+      }
     } catch (err) {
-      toast({ type: 'error', title: 'Error', description: err.message });
+      error('Error al cargar el historial de movimientos');
     } finally {
       setLoading(false);
     }
-  }, [toast, tipoFilter, fromDate, toDate]);
+  };
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // Re-fetch on filter changes (debounced for search)
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setPage(1);
+      fetchMovimientos(search, tipo, fechaInicio, fechaFin, 1);
+    }, 300);
+  }, [search, tipo, fechaInicio, fechaFin]);
 
   useEffect(() => {
-    setSearching(true);
-    const t = setTimeout(() => {
-      const s = search.toLowerCase();
-      setFiltered(
-        s ? movimientos.filter(m =>
-          m.producto_nombre.toLowerCase().includes(s) ||
-          m.producto_codigo.toLowerCase().includes(s) ||
-          m.tipo.toLowerCase().includes(s) ||
-          (m.cliente   || '').toLowerCase().includes(s) ||
-          (m.proveedor || '').toLowerCase().includes(s) ||
-          (m.motivo    || '').toLowerCase().includes(s)
-        ) : movimientos
-      );
-      setPage(1);
-      setSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [search, movimientos]);
+    fetchMovimientos(search, tipo, fechaInicio, fechaFin, page);
+  }, [page]);
 
-  useEffect(() => { setPage(1); }, [sortKey, sortDir]);
-
-  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
-  const paginated  = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  if (loading) return <PageLoader />;
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = {};
+      if (search) params.search = search;
+      if (tipo) params.tipo = tipo;
+      if (fechaInicio) params.fecha_inicio = fechaInicio;
+      if (fechaFin) params.fecha_fin = fechaFin;
+      const res = await api.get('/api/reportes/movimientos', { params, responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `historial_${new Date().toISOString().slice(0,10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      error('Error al exportar el historial');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Historial de Movimientos</h1>
-          <p className="page-subtitle">{filtered.length} movimientos encontrados</p>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-brand-blue">Historial de Movimientos</h1>
+        <SafeButton onClick={handleExport} loading={exporting} variant="ghost">
+          <FileDown className="w-4 h-4" />
+          Exportar Excel
+        </SafeButton>
+      </div>
+
+      {/* Filters Card */}
+      <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="sm:col-span-2 lg:col-span-1">
+            <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">Buscar</label>
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Producto, código, cliente..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">Tipo</label>
+            <select
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+              className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red bg-white"
+            >
+              {TIPO_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">Fecha Inicio</label>
+            <input
+              type="date"
+              value={fechaInicio}
+              max={fechaFin || undefined}
+              onChange={(e) => setFechaInicio(e.target.value)}
+              className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">Fecha Fin</label>
+            <input
+              type="date"
+              value={fechaFin}
+              min={fechaInicio || undefined}
+              onChange={(e) => setFechaFin(e.target.value)}
+              className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-4 mb-5">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Buscar por producto, tipo, cliente, proveedor..."
-          loading={searching}
-          className="flex-1 min-w-[220px]"
-        />
+      {/* Table Card */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        {!loading && (
+          <p className="text-sm text-slate-500 mb-4 font-medium">
+            Total: <span className="text-slate-700">{total.toLocaleString('es-MX')}</span> movimientos
+          </p>
+        )}
 
-        <div className="relative flex items-center">
-          <Filter size={16} className="absolute left-3 text-gray-400 pointer-events-none" />
-          <select
-            className="input pl-9 min-w-[160px]"
-            value={tipoFilter}
-            onChange={e => setTipoFilter(e.target.value)}
-          >
-            <option value="">Todos los tipos</option>
-            <option value="entrada">Entradas</option>
-            <option value="salida">Salidas</option>
-            <option value="ajuste">Ajustes</option>
-            <option value="dañado">Dañados</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label className="label mb-0 whitespace-nowrap">Desde:</label>
-          <input type="date" className="input min-w-[160px]" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label className="label mb-0 whitespace-nowrap">Hasta:</label>
-          <input type="date" className="input min-w-[160px]" value={toDate} onChange={e => setToDate(e.target.value)} />
-        </div>
-
-        {(tipoFilter || fromDate || toDate) && (
-          <button className="btn btn-ghost btn-sm" onClick={() => { setTipoFilter(''); setFromDate(''); setToDate(''); }}>
-            Limpiar filtros
-          </button>
+        {loading ? (
+          <PageLoader />
+        ) : movimientos.length === 0 ? (
+          <EmptyState message="No se encontraron movimientos" />
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium whitespace-nowrap">Fecha</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Tipo</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Código</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Producto</th>
+                    <th className="text-right py-3 px-3 text-slate-500 font-medium">Cantidad</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Unidad</th>
+                    <th className="text-right py-3 px-3 text-slate-500 font-medium">Stock Ant.</th>
+                    <th className="text-right py-3 px-3 text-slate-500 font-medium">Stock Res.</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Cliente</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Proveedor</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Notas</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Registró</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movimientos.map((m) => (
+                    <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50" style={{ minHeight: '56px' }}>
+                      <td className="py-3 px-3 text-slate-600 whitespace-nowrap text-xs">{formatDate(m.fecha)}</td>
+                      <td className="py-3 px-3">
+                        <span className={`text-xs font-semibold px-3 py-1 rounded-full ${TIPO_BADGE[m.tipo] || 'bg-slate-200 text-slate-700'}`}>
+                          {TIPO_LABEL[m.tipo] || m.tipo}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 font-mono text-slate-500 text-xs whitespace-nowrap">{m.codigo || m.producto_codigo || '—'}</td>
+                      <td className="py-3 px-3 font-medium text-slate-800 whitespace-nowrap">{m.nombre || m.producto_nombre || '—'}</td>
+                      <td className="py-3 px-3 text-right font-semibold text-slate-700 whitespace-nowrap">
+                        {Number(m.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500 whitespace-nowrap">{m.unidad_medida || '—'}</td>
+                      <td className="py-3 px-3 text-right text-slate-500 whitespace-nowrap">
+                        {m.stock_anterior != null ? Number(m.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                      </td>
+                      <td className="py-3 px-3 text-right text-slate-700 font-medium whitespace-nowrap">
+                        {m.stock_resultante != null ? Number(m.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500 text-xs">{m.cliente || '—'}</td>
+                      <td className="py-3 px-3 text-slate-500 text-xs">{m.proveedor || '—'}</td>
+                      <td className="py-3 px-3 text-slate-400 text-xs max-w-[150px] truncate">{m.notas || '—'}</td>
+                      <td className="py-3 px-3 text-slate-500 text-xs whitespace-nowrap">{m.usuario || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              limit={50}
+              onPageChange={setPage}
+            />
+          </>
         )}
       </div>
-
-      <div className="table-container">
-        <table className="table">
-          <thead>
-            <tr>
-              <SortTh col="fecha"           label="Fecha y Hora" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortTh col="tipo"            label="Tipo"         sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <th>Código</th>
-              <SortTh col="producto_nombre" label="Producto"     sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <SortTh col="cantidad"        label="Cantidad"     sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="text-right" />
-              <th className="text-right">Stock Anterior</th>
-              <th>Cliente / Proveedor</th>
-              <th>Motivo / Notas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginated.length === 0 ? (
-              <tr><td colSpan={8}>
-                <EmptyState message="No se encontraron movimientos con ese criterio" icon={History} />
-              </td></tr>
-            ) : paginated.map(m => {
-              const { label, className } = tipoMovBadge(m.tipo);
-              const signo     = m.tipo === 'entrada' ? '+' : m.tipo === 'ajuste' ? '→' : '-';
-              const colorCant = m.tipo === 'entrada' ? 'text-green-700'
-                              : m.tipo === 'ajuste'  ? 'text-blue-700'
-                              : m.tipo === 'dañado'  ? 'text-orange-600'
-                              : 'text-primary';
-              return (
-                <tr key={m.id}>
-                  <td className="whitespace-nowrap text-sm text-gray-600">{formatDate(m.fecha)}</td>
-                  <td><span className={className}>{label}</span></td>
-                  <td>
-                    <span className="font-mono text-sm font-semibold text-deep-blue bg-blue-50 px-2 py-0.5 rounded">
-                      {m.producto_codigo}
-                    </span>
-                  </td>
-                  <td className="font-semibold text-gray-800">{m.producto_nombre}</td>
-                  <td className={`text-right font-bold ${colorCant}`}>
-                    {signo}{formatNumber(m.cantidad)}
-                    <span className="text-gray-400 font-normal text-xs ml-1">{m.unidad_medida}</span>
-                  </td>
-                  <td className="text-right text-gray-500 text-sm">{formatNumber(m.cantidad_anterior)}</td>
-                  <td className="text-gray-600 text-sm">
-                    {m.cliente   ? <><span className="text-xs text-gray-400">Cliente: </span>{m.cliente}</> : null}
-                    {m.proveedor ? <><span className="text-xs text-gray-400">Proveedor: </span>{m.proveedor}</> : null}
-                    {!m.cliente && !m.proveedor ? <span className="text-gray-300">—</span> : null}
-                  </td>
-                  <td className="text-gray-500 text-sm max-w-[200px]">
-                    {m.motivo ? <p className="truncate" title={m.motivo}>{m.motivo}</p> : null}
-                    {m.notas  ? <p className="truncate text-gray-400 text-xs" title={m.notas}>{m.notas}</p> : null}
-                    {!m.motivo && !m.notas ? <span className="text-gray-300">—</span> : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <Pagination page={page} totalPages={totalPages} onChange={setPage} total={sorted.length} pageSize={PAGE_SIZE} />
     </div>
   );
 }

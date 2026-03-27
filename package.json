@@ -1,13 +1,12 @@
 {
   "name": "formulasquimicas-inventario",
   "version": "1.0.0",
-  "description": "Sistema de Inventario - Fórmulas Químicas",
+  "description": "Sistema de inventario para Fórmulas Químicas",
+  "private": true,
   "scripts": {
     "build": "cd client && npm install && npm run build",
-    "start": "node server/index.js",
-    "install:server": "cd server && npm install"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "start": "cd server && node index.js",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && npm run dev"
   }
 }

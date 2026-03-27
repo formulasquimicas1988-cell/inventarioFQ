@@ -1,29 +1,24 @@
-import { useRef } from 'react';
-import { cn } from '../../lib/utils';
+import React from 'react';
 
-/**
- * Botón protegido contra doble clic / doble toque.
- * Bloquea inmediatamente con un ref (síncrono, antes del re-render)
- * y se desbloquea cuando `disabled` vuelve a false o tras `lockMs`.
- */
-export default function SafeButton({ onClick, disabled, children, className, lockMs = 2500, type = 'button' }) {
-  const lockedRef = useRef(false);
+const variants = {
+  primary: 'bg-brand-red hover:bg-red-700 active:bg-red-800 text-white',
+  secondary: 'bg-brand-blue hover:bg-blue-900 active:bg-blue-950 text-white',
+  danger: 'bg-red-600 hover:bg-red-700 active:bg-red-800 text-white',
+  ghost: 'bg-transparent hover:bg-slate-100 active:bg-slate-200 text-slate-700 border border-slate-300',
+  outline: 'bg-white hover:bg-slate-50 text-brand-blue border border-brand-blue',
+};
 
-  function handleClick(e) {
-    if (lockedRef.current || disabled) return;
-    lockedRef.current = true;
-    onClick?.(e);
-    // Desbloqueo de seguridad por si el padre no cambia `disabled`
-    setTimeout(() => { lockedRef.current = false; }, lockMs);
-  }
-
+export default function SafeButton({ onClick, children, loading = false, disabled = false, className = '', variant = 'primary', type = 'button' }) {
   return (
     <button
       type={type}
-      className={cn(className, disabled && 'opacity-50 cursor-not-allowed')}
-      onClick={handleClick}
-      disabled={disabled}
+      onClick={onClick}
+      disabled={disabled || loading}
+      className={`min-h-[48px] px-5 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 justify-center ${variants[variant] || variants.primary} ${(disabled || loading) ? 'opacity-60 cursor-not-allowed' : ''} ${className}`}
     >
+      {loading && (
+        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+      )}
       {children}
     </button>
   );

@@ -1,46 +1,97 @@
-const db   = require('../db');
+const pool = require('../db');
 const XLSX = require('xlsx');
 
-// GET /api/productos?search=&categoria=
+// GET /api/productos
 const getAll = async (req, res) => {
   try {
-    const { search = '', categoria = '' } = req.query;
-    let sql = `
-      SELECT p.*, c.nombre AS categoria_nombre
-      FROM productos p
-      LEFT JOIN categorias c ON c.id = p.categoria_id
-      WHERE p.activo = 1
-    `;
+    const { search, categoria_id, activo = '1', page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     const params = [];
+    let where = [];
 
-    if (search.trim()) {
-      sql += ' AND (p.codigo LIKE ? OR p.nombre LIKE ? OR c.nombre LIKE ?)';
+    // activo filter
+    if (activo !== 'all') {
+      where.push('p.activo = ?');
+      params.push(parseInt(activo));
+    }
+
+    // search filter
+    if (search && search.trim()) {
+      where.push('(p.codigo LIKE ? OR p.nombre LIKE ? OR c.nombre LIKE ?)');
       const s = `%${search.trim()}%`;
       params.push(s, s, s);
     }
-    if (categoria) {
-      sql += ' AND p.categoria_id = ?';
-      params.push(categoria);
-    }
-    sql += ' ORDER BY p.nombre ASC';
 
-    const [rows] = await db.query(sql, params);
-    res.json(rows);
+    // categoria filter
+    if (categoria_id && categoria_id !== 'all') {
+      where.push('p.categoria_id = ?');
+      params.push(parseInt(categoria_id));
+    }
+
+    const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM productos p
+       LEFT JOIN categorias c ON p.categoria_id = c.id
+       ${whereClause}`,
+      params
+    );
+    const total = countRows[0].total;
+
+    const [rows] = await pool.query(
+      `SELECT p.*, c.nombre AS categoria_nombre
+       FROM productos p
+       LEFT JOIN categorias c ON p.categoria_id = c.id
+       ${whereClause}
+       ORDER BY p.nombre ASC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    const totalPages = Math.ceil(total / parseInt(limit)) || 1;
+    res.json({ data: rows, total, page: parseInt(page), limit: parseInt(limit), totalPages });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getAll productos error:', err);
+    res.status(500).json({ error: 'Error al obtener productos' });
+  }
+};
+
+// GET /api/productos/:id
+const getById = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT p.*, c.nombre AS categoria_nombre
+       FROM productos p
+       LEFT JOIN categorias c ON p.categoria_id = c.id
+       WHERE p.id = ?`,
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('getById producto error:', err);
+    res.status(500).json({ error: 'Error al obtener producto' });
   }
 };
 
 // POST /api/productos
 const create = async (req, res) => {
-  const { codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida } = req.body;
-  if (!codigo?.trim() || !nombre?.trim()) {
-    return res.status(400).json({ error: 'Código y nombre son obligatorios' });
-  }
   try {
-    const [result] = await db.query(
-      `INSERT INTO productos
-        (codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida)
+    const { codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida } = req.body;
+
+    if (!codigo || !codigo.trim()) return res.status(400).json({ error: 'El código es requerido' });
+    if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
+    if (!unidad_medida || !unidad_medida.trim()) return res.status(400).json({ error: 'La unidad de medida es requerida' });
+
+    // Check duplicate codigo
+    const [existing] = await pool.query('SELECT id FROM productos WHERE codigo = ?', [codigo.trim()]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: `Ya existe un producto con el código ${codigo.trim()}` });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO productos (codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         codigo.trim(),
@@ -48,138 +99,161 @@ const create = async (req, res) => {
         categoria_id || null,
         parseFloat(stock_actual) || 0,
         parseFloat(stock_minimo) || 0,
-        unidad_medida?.trim() || 'unidad',
+        unidad_medida.trim()
       ]
     );
-    const [rows] = await db.query(
-      'SELECT p.*, c.nombre AS categoria_nombre FROM productos p LEFT JOIN categorias c ON c.id = p.categoria_id WHERE p.id = ?',
-      [result.insertId]
+
+    const productoId = result.insertId;
+    const stockInicial = parseFloat(stock_actual) || 0;
+    const { usuario } = req.body;
+
+    await pool.query(
+      `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, notas, usuario)
+       VALUES (?, 'entrada', ?, 0, 'Stock inicial', ?)`,
+      [productoId, stockInicial, usuario || null]
+    );
+
+    const [rows] = await pool.query(
+      `SELECT p.*, c.nombre AS categoria_nombre
+       FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id
+       WHERE p.id = ?`,
+      [productoId]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
-    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Ya existe un producto con ese código' });
-    res.status(500).json({ error: err.message });
+    console.error('create producto error:', err);
+    res.status(500).json({ error: 'Error al crear producto' });
   }
 };
 
 // PUT /api/productos/:id
 const update = async (req, res) => {
-  const { id } = req.params;
-  const { codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida } = req.body;
-  if (!codigo?.trim() || !nombre?.trim()) {
-    return res.status(400).json({ error: 'Código y nombre son obligatorios' });
-  }
   try {
-    await db.query(
-      `UPDATE productos SET
-        codigo = ?, nombre = ?, categoria_id = ?,
-        stock_actual = ?, stock_minimo = ?,
-        unidad_medida = ?
-       WHERE id = ? AND activo = 1`,
+    const { id } = req.params;
+    const { codigo, nombre, categoria_id, stock_minimo, unidad_medida } = req.body;
+
+    if (!codigo || !codigo.trim()) return res.status(400).json({ error: 'El código es requerido' });
+    if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
+    if (!unidad_medida || !unidad_medida.trim()) return res.status(400).json({ error: 'La unidad de medida es requerida' });
+
+    // Check duplicate codigo excluding self
+    const [existing] = await pool.query('SELECT id FROM productos WHERE codigo = ? AND id != ?', [codigo.trim(), id]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: `Ya existe otro producto con el código ${codigo.trim()}` });
+    }
+
+    // NOTE: stock_actual is NOT updated here — only via movements
+    const [result] = await pool.query(
+      `UPDATE productos SET codigo = ?, nombre = ?, categoria_id = ?, stock_minimo = ?, unidad_medida = ?
+       WHERE id = ?`,
       [
         codigo.trim(),
         nombre.trim(),
         categoria_id || null,
-        parseFloat(stock_actual) || 0,
         parseFloat(stock_minimo) || 0,
-        unidad_medida?.trim() || 'unidad',
-        id,
+        unidad_medida.trim(),
+        id
       ]
     );
-    const [rows] = await db.query(
-      'SELECT p.*, c.nombre AS categoria_nombre FROM productos p LEFT JOIN categorias c ON c.id = p.categoria_id WHERE p.id = ?',
+
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    const [rows] = await pool.query(
+      `SELECT p.*, c.nombre AS categoria_nombre
+       FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id
+       WHERE p.id = ?`,
       [id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Producto no encontrado' });
     res.json(rows[0]);
   } catch (err) {
-    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Ya existe un producto con ese código' });
-    res.status(500).json({ error: err.message });
+    console.error('update producto error:', err);
+    res.status(500).json({ error: 'Error al actualizar producto' });
   }
 };
 
-// DELETE /api/productos/:id  (borrado real)
+// DELETE /api/productos/:id (soft delete)
 const remove = async (req, res) => {
-  const { id } = req.params;
   try {
-    // Verificar si tiene movimientos
-    const [movs] = await db.query(
-      'SELECT COUNT(*) AS total FROM movimientos WHERE producto_id = ?',
-      [id]
-    );
-    if (movs[0].total > 0) {
-      // Borrado lógico para preservar historial
-      await db.query('UPDATE productos SET activo = 0 WHERE id = ?', [id]);
-      return res.json({ message: 'Producto desactivado (tiene historial de movimientos)' });
-    }
-    // Borrado físico si no tiene movimientos
-    const [result] = await db.query('DELETE FROM productos WHERE id = ?', [id]);
+    const { id } = req.params;
+    const [result] = await pool.query('UPDATE productos SET activo = 0 WHERE id = ?', [id]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Producto no encontrado' });
-    res.json({ message: 'Producto eliminado correctamente' });
+    res.json({ message: 'Producto desactivado correctamente' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('remove producto error:', err);
+    res.status(500).json({ error: 'Error al eliminar producto' });
   }
 };
 
-// POST /api/productos/import
-const importExcel = async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+// POST /api/productos/importar/excel
+const importarExcel = async (req, res) => {
   try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const sheet    = workbook.Sheets[workbook.SheetNames[0]];
-    const data     = XLSX.utils.sheet_to_json(sheet);
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+    if (!data.length) return res.status(400).json({ error: 'El archivo Excel está vacío' });
 
     let insertados = 0;
-    let errores    = [];
+    let actualizados = 0;
+    const errores = [];
 
-    for (const row of data) {
-      const codigo       = String(row['codigo'] || row['Código'] || row['CODIGO'] || '').trim();
-      const nombre       = String(row['nombre'] || row['Nombre'] || row['NOMBRE'] || '').trim();
-      const catNombre    = String(row['categoria'] || row['Categoría'] || row['CATEGORIA'] || '').trim();
-      const stockActual  = parseFloat(row['stock_actual'] || row['Stock Actual'] || 0);
-      const stockMinimo  = parseFloat(row['stock_minimo'] || row['Stock Mínimo'] || 0);
-      const unidad       = String(row['unidad_medida'] || row['Unidad'] || 'unidad').trim();
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const rowNum = i + 2;
 
-      if (!codigo || !nombre) {
-        errores.push(`Fila sin código o nombre: ${JSON.stringify(row)}`);
-        continue;
-      }
+      // Support Spanish and English column names
+      const codigo = (row['codigo'] || row['Codigo'] || row['CODIGO'] || row['code'] || '').toString().trim();
+      const nombre = (row['nombre'] || row['Nombre'] || row['NOMBRE'] || row['name'] || '').toString().trim();
+      const categoriaName = (row['categoria'] || row['Categoria'] || row['CATEGORIA'] || row['category'] || '').toString().trim();
+      const stockActual = parseFloat(row['stock_actual'] || row['Stock Actual'] || row['stock actual'] || row['stock'] || 0) || 0;
+      const stockMinimo = parseFloat(row['stock_minimo'] || row['Stock Minimo'] || row['stock minimo'] || row['min_stock'] || 0) || 0;
+      const unidad = (row['unidad_medida'] || row['Unidad'] || row['UNIDAD'] || row['unit'] || '').toString().trim();
+      if (!codigo) { errores.push(`Fila ${rowNum}: código vacío`); continue; }
+      if (!nombre) { errores.push(`Fila ${rowNum}: nombre vacío`); continue; }
+      if (!unidad) { errores.push(`Fila ${rowNum}: unidad de medida vacía`); continue; }
 
-      let categoria_id = null;
-      if (catNombre) {
-        const [cats] = await db.query('SELECT id FROM categorias WHERE nombre = ?', [catNombre]);
-        if (cats.length > 0) {
-          categoria_id = cats[0].id;
-        } else {
-          // Crear categoría si no existe
-          const [newCat] = await db.query('INSERT INTO categorias (nombre) VALUES (?)', [catNombre]);
-          categoria_id = newCat.insertId;
-        }
+      // Find or skip categoria
+      let categoriaId = null;
+      if (categoriaName) {
+        const [cats] = await pool.query('SELECT id FROM categorias WHERE nombre = ?', [categoriaName]);
+        if (cats.length > 0) categoriaId = cats[0].id;
       }
 
       try {
-        await db.query(
-          `INSERT INTO productos (codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE
-             nombre = VALUES(nombre),
-             categoria_id = VALUES(categoria_id),
-             stock_actual = VALUES(stock_actual),
-             stock_minimo = VALUES(stock_minimo),
-             unidad_medida = VALUES(unidad_medida),
-             activo = 1`,
-          [codigo, nombre, categoria_id, stockActual, stockMinimo, unidad]
-        );
-        insertados++;
+        const [existing] = await pool.query('SELECT id FROM productos WHERE codigo = ?', [codigo]);
+        if (existing.length > 0) {
+          await pool.query(
+            `UPDATE productos SET nombre = ?, categoria_id = ?, stock_minimo = ?, unidad_medida = ?, activo = 1
+             WHERE codigo = ?`,
+            [nombre, categoriaId, stockMinimo, unidad, codigo]
+          );
+          actualizados++;
+        } else {
+          await pool.query(
+            `INSERT INTO productos (codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [codigo, nombre, categoriaId, stockActual, stockMinimo, unidad]
+          );
+          insertados++;
+        }
       } catch (rowErr) {
-        errores.push(`Error en producto ${codigo}: ${rowErr.message}`);
+        errores.push(`Fila ${rowNum} (${codigo}): ${rowErr.message}`);
       }
     }
 
-    res.json({ insertados, errores, total: data.length });
+    res.json({
+      message: `Importación completada: ${insertados} insertados, ${actualizados} actualizados`,
+      insertados,
+      actualizados,
+      errores
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('importarExcel error:', err);
+    res.status(500).json({ error: 'Error al procesar el archivo Excel' });
   }
 };
 
-module.exports = { getAll, create, update, remove, importExcel };
+module.exports = { getAll, getById, create, update, remove, importarExcel };

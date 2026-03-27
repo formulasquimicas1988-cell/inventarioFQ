@@ -1,35 +1,25 @@
-const mysql = require('mysql2/promise');
 require('dotenv').config();
+const mysql = require('mysql2/promise');
 
-console.log('[DB] Config:', {
-  host:     process.env.DB_HOST     || '(no DB_HOST)',
-  port:     process.env.DB_PORT     || '(no DB_PORT)',
-  user:     process.env.DB_USER     || '(no DB_USER)',
-  database: process.env.DB_NAME     || '(no DB_NAME)',
-  password: process.env.DB_PASSWORD ? '(set)' : '(no DB_PASSWORD)',
-  NODE_ENV: process.env.NODE_ENV    || '(no NODE_ENV)',
-});
-
+// Support both custom DB_ vars (local) and Railway's MYSQL* vars
 const pool = mysql.createPool({
-  host:               process.env.DB_HOST,
-  port:               parseInt(process.env.DB_PORT) || 3306,
-  user:               process.env.DB_USER,
-  password:           process.env.DB_PASSWORD,
-  database:           process.env.DB_NAME,
+  host:     process.env.DB_HOST     || process.env.MYSQLHOST,
+  port:     parseInt(process.env.DB_PORT || process.env.MYSQLPORT) || 3306,
+  user:     process.env.DB_USER     || process.env.MYSQLUSER,
+  password: process.env.DB_PASSWORD || process.env.MYSQLPASSWORD,
+  database: process.env.DB_NAME     || process.env.MYSQLDATABASE,
   waitForConnections: true,
-  connectionLimit:    10,
-  queueLimit:         0,
-  timezone:           'local',
+  connectionLimit: 10,
+  queueLimit: 0,
+  timezone: '+00:00',
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
 });
 
-// Verificar conexión al iniciar
 pool.getConnection()
   .then(conn => {
-    console.log(`✅ Conectado a MySQL - ${process.env.DB_HOST}/${process.env.DB_NAME}`);
+    console.log('✅ MySQL connected to', process.env.DB_HOST || process.env.MYSQLHOST);
     conn.release();
   })
-  .catch(err => {
-    console.error('❌ Error conectando a MySQL:', err.message);
-  });
+  .catch(err => console.error('❌ MySQL connection error:', err.message));
 
 module.exports = pool;

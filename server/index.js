@@ -1,50 +1,52 @@
 require('dotenv').config();
-const express    = require('express');
-const cors       = require('cors');
-const path       = require('path');
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
 
-const categoriasRouter   = require('./routes/categorias');
-const productosRouter    = require('./routes/productos');
-const movimientosRouter  = require('./routes/movimientos');
-const dashboardRouter    = require('./routes/dashboard');
-const reportesRouter     = require('./routes/reportes');
+const app = express();
 
-const app  = express();
-const PORT = process.env.PORT || 5000;
+// Middleware
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : ['http://localhost:5173', 'http://localhost:3001'];
 
-// ── Middlewares ──────────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, same-origin)
+    if (!origin) return callback(null, true);
+    if (process.env.NODE_ENV !== 'production') return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ── Rutas ────────────────────────────────────────────────────
-app.use('/api/categorias',  categoriasRouter);
-app.use('/api/productos',   productosRouter);
-app.use('/api/movimientos', movimientosRouter);
-app.use('/api/dashboard',   dashboardRouter);
-app.use('/api/reportes',    reportesRouter);
+// API Routes
+app.use('/api/categorias', require('./routes/categorias'));
+app.use('/api/productos', require('./routes/productos'));
+app.use('/api/movimientos', require('./routes/movimientos'));
+app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/reportes', require('./routes/reportes'));
+app.use('/api/alertas', require('./routes/alertas'));
 
-// Health check
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
+// Health check (must be before the SPA catch-all)
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', app: 'Inventario Fórmulas Químicas' });
+});
 
-// ── Archivos estáticos en producción ─────────────────────────
+// Serve React frontend in production
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../client/dist');
   app.use(express.static(distPath));
   app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(distPath, 'index.html'));
-    }
+    res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
-// ── Manejo de errores ────────────────────────────────────────
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ error: err.message || 'Error interno del servidor' });
-});
-
-// ── Inicio ───────────────────────────────────────────────────
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 });

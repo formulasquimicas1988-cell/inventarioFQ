@@ -1,29 +1,24 @@
 import { useState, useMemo } from 'react';
 
-export function useSortable(data, defaultKey = null, defaultDir = 'asc') {
-  const [sortKey, setSortKey] = useState(defaultKey);
+export function useSortable(data, defaultSort = null, defaultDir = 'asc') {
+  const [sortKey, setSortKey] = useState(defaultSort);
   const [sortDir, setSortDir] = useState(defaultDir);
 
-  function toggleSort(key) {
-    if (sortKey === key) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(key);
-      setSortDir('asc');
-    }
-  }
-
   const sorted = useMemo(() => {
-    if (!sortKey) return data;
+    if (!sortKey || !Array.isArray(data)) return data;
     return [...data].sort((a, b) => {
-      const av = a[sortKey] ?? '';
-      const bv = b[sortKey] ?? '';
-      const cmp = (typeof av === 'number' && typeof bv === 'number')
-        ? av - bv
-        : String(av).localeCompare(String(bv), 'es', { numeric: true });
+      const av = a[sortKey], bv = b[sortKey];
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      const cmp = typeof av === 'string' ? av.localeCompare(bv, 'es') : av - bv;
       return sortDir === 'asc' ? cmp : -cmp;
     });
   }, [data, sortKey, sortDir]);
 
-  return { sorted, sortKey, sortDir, toggleSort };
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  };
+
+  return { sorted, sortKey, sortDir, handleSort };
 }

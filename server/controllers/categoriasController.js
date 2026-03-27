@@ -1,10 +1,14 @@
-const db = require('../db');
+const pool = require('../db');
 
 // GET /api/categorias
 const getAll = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT c.*, COUNT(p.id) AS total_productos
+    const [rows] = await pool.query(`
+      SELECT
+        c.id,
+        c.nombre,
+        c.creado_en,
+        COUNT(p.id) AS total_productos
       FROM categorias c
       LEFT JOIN productos p ON p.categoria_id = c.id AND p.activo = 1
       GROUP BY c.id
@@ -12,71 +16,84 @@ const getAll = async (req, res) => {
     `);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getAll categorias error:', err);
+    res.status(500).json({ error: 'Error al obtener categorías' });
   }
 };
 
 // POST /api/categorias
 const create = async (req, res) => {
-  console.log('[POST /categorias] body:', JSON.stringify(req.body));
-  const { nombre } = req.body;
-  if (!nombre?.trim()) {
-    console.log('[POST /categorias] Falta nombre');
-    return res.status(400).json({ error: 'El nombre es obligatorio' });
-  }
   try {
-    console.log('[POST /categorias] Ejecutando INSERT con nombre:', nombre.trim());
-    const [result] = await db.query(
+    const { nombre } = req.body;
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ error: 'El nombre de la categoría es requerido' });
+    }
+    const [result] = await pool.query(
       'INSERT INTO categorias (nombre) VALUES (?)',
       [nombre.trim()]
     );
-    console.log('[POST /categorias] INSERT result:', JSON.stringify(result));
-    const [rows] = await db.query('SELECT * FROM categorias WHERE id = ?', [result.insertId]);
-    console.log('[POST /categorias] SELECT result:', JSON.stringify(rows));
+    const [rows] = await pool.query(
+      'SELECT c.*, 0 AS total_productos FROM categorias c WHERE c.id = ?',
+      [result.insertId]
+    );
     res.status(201).json(rows[0]);
   } catch (err) {
-    console.error('[POST /categorias] ERROR:', err.message, '| code:', err.code);
-    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Ya existe una categoría con ese nombre' });
-    res.status(500).json({ error: err.message });
+    console.error('create categoria error:', err);
+    res.status(500).json({ error: 'Error al crear la categoría' });
   }
 };
 
 // PUT /api/categorias/:id
 const update = async (req, res) => {
-  const { id } = req.params;
-  const { nombre } = req.body;
-  if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es obligatorio' });
   try {
-    await db.query(
+    const { id } = req.params;
+    const { nombre } = req.body;
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ error: 'El nombre de la categoría es requerido' });
+    }
+    const [result] = await pool.query(
       'UPDATE categorias SET nombre = ? WHERE id = ?',
       [nombre.trim(), id]
     );
-    const [rows] = await db.query('SELECT * FROM categorias WHERE id = ?', [id]);
-    if (!rows.length) return res.status(404).json({ error: 'Categoría no encontrada' });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Categoría no encontrada' });
+    }
+    const [rows] = await pool.query(`
+      SELECT c.*, COUNT(p.id) AS total_productos
+      FROM categorias c
+      LEFT JOIN productos p ON p.categoria_id = c.id AND p.activo = 1
+      WHERE c.id = ?
+      GROUP BY c.id
+    `, [id]);
     res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('update categoria error:', err);
+    res.status(500).json({ error: 'Error al actualizar la categoría' });
   }
 };
 
 // DELETE /api/categorias/:id
 const remove = async (req, res) => {
-  const { id } = req.params;
   try {
-    const [products] = await db.query(
-      'SELECT COUNT(*) AS total FROM productos WHERE categoria_id = ? AND activo = 1',
+    const { id } = req.params;
+    // Check if there are active products in this category
+    const [products] = await pool.query(
+      'SELECT COUNT(*) AS count FROM productos WHERE categoria_id = ? AND activo = 1',
       [id]
     );
-    if (products[0].total > 0) {
+    if (products[0].count > 0) {
       return res.status(400).json({
-        error: `No se puede eliminar: tiene ${products[0].total} producto(s) asociado(s)`
+        error: `No se puede eliminar la categoría porque tiene ${products[0].count} producto(s) activo(s) asignado(s).`
       });
     }
-    const [result] = await db.query('DELETE FROM categorias WHERE id = ?', [id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Categoría no encontrada' });
+    const [result] = await pool.query('DELETE FROM categorias WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Categoría no encontrada' });
+    }
     res.json({ message: 'Categoría eliminada correctamente' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('remove categoria error:', err);
+    res.status(500).json({ error: 'Error al eliminar la categoría' });
   }
 };
 

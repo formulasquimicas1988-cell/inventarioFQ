@@ -1,78 +1,72 @@
-import { useLocation } from 'react-router-dom';
-import { Bell } from 'lucide-react';
-import { useAlerts } from '../context/AlertContext';
-import { formatDate } from '../lib/utils';
+import React, { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
+import { useUser } from '../context/UserContext'
+import { LogOut } from 'lucide-react'
 
-const TITLES = {
-  '/':           { title: 'Dashboard',            subtitle: 'Resumen general del inventario' },
-  '/categorias': { title: 'Categorías',           subtitle: 'Gestión de categorías de productos' },
-  '/productos':  { title: 'Productos',            subtitle: 'Gestión del catálogo de productos' },
-  '/entradas':   { title: 'Entradas de Stock',    subtitle: 'Registro de compras y recepciones' },
-  '/salidas':    { title: 'Salidas de Stock',     subtitle: 'Registro de entregas a clientes' },
-  '/ajustes':    { title: 'Ajustes de Inventario', subtitle: 'Correcciones y ajustes de stock' },
-  '/historial':  { title: 'Historial de Movimientos', subtitle: 'Registro completo de movimientos' },
-  '/danados':    { title: 'Productos Dañados',        subtitle: 'Registro de mermas y daños de inventario' },
-  '/alertas':    { title: 'Alertas de Stock',     subtitle: 'Productos con stock crítico' },
-  '/reportes':   { title: 'Reportes',             subtitle: 'Exportar datos del inventario' },
-};
+const PAGE_TITLES = {
+  '/dashboard': 'Dashboard',
+  '/productos': 'Productos',
+  '/categorias': 'Categorías',
+  '/entradas': 'Entradas',
+  '/salidas': 'Salidas',
+  '/ajustes': 'Ajustes de Inventario',
+  '/historial': 'Historial de Movimientos',
+  '/alertas': 'Alertas de Stock',
+  '/reportes': 'Reportes',
+}
+
+function getPageTitle(pathname) {
+  return PAGE_TITLES[pathname] || 'Inventario'
+}
+
+function formatDateTime(date) {
+  return date.toLocaleString('es-MX', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
 
 export default function Header() {
-  const location = useLocation();
-  const { count } = useAlerts();
-  const now = new Date();
+  const location = useLocation()
+  const { usuario, logout } = useUser()
+  const [now, setNow] = useState(new Date())
 
-  const info = TITLES[location.pathname] || TITLES['/'];
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const title = getPageTitle(location.pathname)
 
   return (
-    <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 bg-deep-blue shadow-md">
-      <div>
-        <h1 className="font-bold text-white leading-tight" style={{ fontSize: '18px' }}>
-          {info.title}
-        </h1>
-        <p className="text-white/50 leading-tight" style={{ fontSize: '12px' }}>
-          {info.subtitle}
-        </p>
-      </div>
-
+    <header
+      className="bg-brand-blue flex items-center justify-between px-6 flex-shrink-0"
+      style={{ height: '64px' }}
+    >
+      <h1 className="text-white font-semibold text-lg">{title}</h1>
       <div className="flex items-center gap-4">
-        {/* Hora actual */}
-        <div className="hidden sm:flex flex-col items-end">
-          <span className="text-white/80 font-medium" style={{ fontSize: '13px' }}>
-            {formatDate(now)}
-          </span>
+        <div className="text-white/80 text-sm capitalize hidden sm:block">
+          {formatDateTime(now)}
         </div>
-
-        {/* Campana de alertas */}
-        <a
-          href="/alertas"
-          className="relative flex items-center justify-center w-11 h-11 rounded-xl
-                     text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-          title={count > 0 ? `${count} producto(s) con stock crítico` : 'Sin alertas'}
-        >
-          <Bell size={22} />
-          {count > 0 && (
-            <span
-              className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full
-                         flex items-center justify-center text-white font-bold shadow-md"
-              style={{ fontSize: '11px' }}
-            >
-              {count > 9 ? '9+' : count}
-            </span>
-          )}
-        </a>
-
-        {/* Avatar empresa */}
         <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-lg overflow-hidden shadow-md flex-shrink-0">
-            <img src="/logo.ico" alt="Logo" className="w-full h-full object-contain" />
+          <div className="w-7 h-7 rounded-full bg-brand-red flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-xs font-bold">{usuario.charAt(0).toUpperCase()}</span>
           </div>
-          <div className="hidden md:block">
-            <p className="text-white font-semibold leading-tight" style={{ fontSize: '13px' }}>
-              Fórmulas Químicas
-            </p>
-          </div>
+          <span className="text-white text-sm font-medium hidden sm:block">{usuario}</span>
+          <button
+            onClick={logout}
+            title="Cambiar usuario"
+            className="ml-1 flex items-center justify-center w-8 h-8 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </header>
-  );
+  )
 }

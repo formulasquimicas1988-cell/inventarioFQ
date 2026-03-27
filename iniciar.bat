@@ -1,54 +1,50 @@
 @echo off
-title Formulas Quimicas - Sistema Inventario
+title Inventario Formulas Quimicas
+color 0A
 
-echo.
-echo  ================================================
-echo     FORMULAS QUIMICAS - Sistema de Inventario
-echo             Iniciando aplicacion...
-echo  ================================================
+echo ================================================
+echo    INVENTARIO FORMULAS QUIMICAS
+echo ================================================
 echo.
 
-:: Verificar dependencias
-if not exist "%~dp0server\node_modules" (
-    echo  [ERROR] No se encontraron dependencias del servidor.
-    echo  Ejecuta primero: instalar.bat
+REM Verificar que existe el .env del servidor
+if not exist "server\.env" (
+    echo [ERROR] No se encontro el archivo server\.env
+    echo.
+    echo Crea el archivo server\.env con el siguiente contenido:
+    echo.
+    echo DB_HOST=localhost
+    echo DB_PORT=3306
+    echo DB_USER=root
+    echo DB_PASSWORD=
+    echo DB_NAME=formulasquimicas
+    echo PORT=3001
+    echo NODE_ENV=development
     echo.
     pause
     exit /b 1
 )
-if not exist "%~dp0client\node_modules" (
-    echo  [ERROR] No se encontraron dependencias del cliente.
-    echo  Ejecuta primero: instalar.bat
-    echo.
-    pause
-    exit /b 1
-)
 
-:: Iniciar servidor
-echo  [1/2] Iniciando servidor  ^(puerto 5000^)...
-start "FQ - Servidor (NO CERRAR)" cmd /k "title FQ - Servidor (NO CERRAR) && cd /d "%~dp0server" && npm run dev"
+echo [1/2] Iniciando servidor backend (puerto 3001)...
+start "Backend - Formulas Quimicas" cmd /k "cd /d %~dp0server && npm run dev"
 
-timeout /t 3 /nobreak >nul
+echo [2/2] Iniciando frontend Vite (puerto 5173)...
+start "Frontend - Formulas Quimicas" cmd /k "cd /d %~dp0client && npm run dev"
 
-:: Iniciar cliente
-echo  [2/2] Iniciando cliente   ^(puerto 5173^)...
-start "FQ - Cliente (NO CERRAR)" cmd /k "title FQ - Cliente (NO CERRAR) && cd /d "%~dp0client" && npm run dev"
-
+echo.
+echo Esperando que los servidores arranquen...
 timeout /t 4 /nobreak >nul
 
-:: Abrir navegador
-echo  Abriendo navegador...
+echo Abriendo navegador...
 start "" "http://localhost:5173"
 
 echo.
-echo  ================================================
-echo     Sistema iniciado correctamente!
+echo ================================================
+echo  Servidores corriendo:
+echo    Backend:  http://localhost:3001
+echo    Frontend: http://localhost:5173
+echo ================================================
 echo.
-echo     URL:   http://localhost:5173
-echo     API:   http://localhost:5000
-echo.
-echo     Para detener: cierra las dos ventanas
-echo     negras  "FQ - Servidor"  y  "FQ - Cliente"
-echo  ================================================
+echo Cierra las ventanas de cmd para detener los servidores.
 echo.
 pause

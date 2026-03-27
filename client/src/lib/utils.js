@@ -1,78 +1,73 @@
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs) {
-  return twMerge(clsx(inputs));
-}
-
 /**
- * Formatea una fecha al formato 12h con AM/PM en español
- * Ejemplo: 02/04/2025 03:45 PM
+ * Format a date string to "DD/MM/YYYY hh:mm AM/PM" in Spanish 12h format
  */
-export function formatDate(value) {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '—';
-  const dd   = String(d.getDate()).padStart(2, '0');
-  const mm   = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  let   h    = d.getHours();
-  const min  = String(d.getMinutes()).padStart(2, '0');
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return `${dd}/${mm}/${yyyy} ${String(h).padStart(2, '0')}:${min} ${ampm}`;
-}
-
-/**
- * Formatea solo la fecha (sin hora)
- */
-export function formatDateOnly(value) {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '—';
-  const dd   = String(d.getDate()).padStart(2, '0');
-  const mm   = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
-}
-
-/**
- * Formatea un número decimal (elimina .00)
- */
-export function formatNumber(n) {
-  const num = parseFloat(n);
-  if (isNaN(num)) return '0';
-  return num % 1 === 0 ? num.toString() : num.toFixed(2);
-}
-
-/**
- * Devuelve el label y clase de badge para el tipo de movimiento
- */
-export function tipoMovBadge(tipo) {
-  switch (tipo) {
-    case 'entrada': return { label: 'Entrada', className: 'badge-green' };
-    case 'salida':  return { label: 'Salida',  className: 'badge-red' };
-    case 'ajuste':  return { label: 'Ajuste',  className: 'badge-blue' };
-    case 'dañado':  return { label: 'Dañado',  className: 'badge-yellow' };
-    default:        return { label: tipo,      className: 'badge-gray' };
+export function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('es-MX', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '—';
   }
 }
 
 /**
- * Trunca texto largo
+ * Format a number with specified decimal places
  */
-export function truncate(text, max = 40) {
-  if (!text) return '—';
-  return text.length > max ? text.slice(0, max) + '…' : text;
+export function formatNumber(n, decimals = 2) {
+  if (n === null || n === undefined || isNaN(n)) return '0.00';
+  return parseFloat(n).toLocaleString('es-MX', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 }
 
 /**
- * Genera el datetime-local value desde una fecha JS
+ * Get stock status based on actual vs minimum stock
+ * critico = stock_actual < stock_minimo
+ * bajo    = stock_actual <= stock_minimo * 1.5
+ * ok      = otherwise
  */
-export function toDatetimeLocal(date) {
-  if (!date) return '';
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+export function getStockStatus(stockActual, stockMinimo) {
+  const actual = parseFloat(stockActual) || 0;
+  const minimo = parseFloat(stockMinimo) || 0;
+  if (actual < minimo) return 'critico';
+  if (actual <= minimo * 1.5) return 'bajo';
+  return 'ok';
+}
+
+/**
+ * Get Tailwind badge classes for stock status
+ */
+export function getStockBadge(stockActual, stockMinimo) {
+  const status = getStockStatus(stockActual, stockMinimo);
+  if (status === 'critico') return 'bg-red-100 text-red-800 border border-red-200';
+  if (status === 'bajo') return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+  return 'bg-green-100 text-green-800 border border-green-200';
+}
+
+/**
+ * Combine class names, filtering falsy values
+ */
+export function cn(...classes) {
+  return classes.filter(Boolean).join(' ');
+}
+
+/**
+ * Debounce a function by delay ms
+ */
+export function debounce(fn, delay) {
+  let timer;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
 }

@@ -1,54 +1,80 @@
+import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export default function Pagination({ page, totalPages, onChange, total, pageSize }) {
-  if (totalPages <= 1) return null;
+export default function Pagination({ page, totalPages, total, limit, onPageChange }) {
+  if (!totalPages || totalPages <= 1) return null;
 
-  const from = Math.min((page - 1) * pageSize + 1, total);
-  const to   = Math.min(page * pageSize, total);
+  const from = (page - 1) * limit + 1;
+  const to = Math.min(page * limit, total);
 
-  let start = Math.max(1, page - 2);
-  let end   = Math.min(totalPages, start + 4);
-  if (end - start < 4) start = Math.max(1, end - 4);
+  const getPageNumbers = () => {
+    const pages = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+      return pages;
+    }
 
-  const pages = [];
-  for (let i = start; i <= end; i++) pages.push(i);
+    pages.push(1);
+    if (page > 4) pages.push('...');
+
+    const start = Math.max(2, page - 2);
+    const end = Math.min(totalPages - 1, page + 2);
+
+    for (let i = start; i <= end; i++) pages.push(i);
+
+    if (page < totalPages - 3) pages.push('...');
+    pages.push(totalPages);
+
+    return pages;
+  };
+
+  const pageNumbers = getPageNumbers();
 
   return (
-    <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-      <p className="text-sm text-gray-500">
-        {from}–{to} de <span className="font-semibold text-gray-700">{total}</span>
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4">
+      <p className="text-sm text-slate-500">
+        Mostrando {from} - {to} de {total} resultados
       </p>
       <div className="flex items-center gap-1">
-        <button className="btn-icon btn-ghost" onClick={() => onChange(page - 1)} disabled={page === 1}>
-          <ChevronLeft size={18} />
+        <button
+          onClick={() => onPageChange(page - 1)}
+          disabled={page === 1}
+          className="min-h-[48px] w-[48px] flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          aria-label="Página anterior"
+        >
+          <ChevronLeft className="w-5 h-5" />
         </button>
 
-        {start > 1 && (
-          <>
-            <button className="btn-icon btn-ghost" onClick={() => onChange(1)}>1</button>
-            {start > 2 && <span className="px-1 text-gray-400 text-sm">…</span>}
-          </>
+        {pageNumbers.map((p, idx) =>
+          p === '...' ? (
+            <span
+              key={`ellipsis-${idx}`}
+              className="min-h-[48px] w-[48px] flex items-center justify-center text-slate-400 text-sm"
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onPageChange(p)}
+              className={`min-h-[48px] w-[48px] flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                p === page
+                  ? 'bg-brand-red text-white'
+                  : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {p}
+            </button>
+          )
         )}
 
-        {pages.map(p => (
-          <button
-            key={p}
-            onClick={() => p !== page && onChange(p)}
-            className={`btn-icon ${p === page ? 'bg-deep-blue text-white hover:bg-deep-blue' : 'btn-ghost'}`}
-          >
-            {p}
-          </button>
-        ))}
-
-        {end < totalPages && (
-          <>
-            {end < totalPages - 1 && <span className="px-1 text-gray-400 text-sm">…</span>}
-            <button className="btn-icon btn-ghost" onClick={() => onChange(totalPages)}>{totalPages}</button>
-          </>
-        )}
-
-        <button className="btn-icon btn-ghost" onClick={() => onChange(page + 1)} disabled={page === totalPages}>
-          <ChevronRight size={18} />
+        <button
+          onClick={() => onPageChange(page + 1)}
+          disabled={page === totalPages}
+          className="min-h-[48px] w-[48px] flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          aria-label="Página siguiente"
+        >
+          <ChevronRight className="w-5 h-5" />
         </button>
       </div>
     </div>

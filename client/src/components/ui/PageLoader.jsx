@@ -1,12 +1,9 @@
+import React from 'react';
+
 export default function PageLoader() {
   return (
-    <div className="flex items-center justify-center py-24">
-      <div className="flex flex-col items-center gap-3 text-gray-400">
-        <div className="w-8 h-8 border-3 border-gray-200 border-t-deep-blue rounded-full animate-spin"
-          style={{ borderWidth: '3px' }}
-        />
-        <span className="text-sm">Cargando...</span>
-      </div>
+    <div className="flex items-center justify-center py-20">
+      <div className="w-10 h-10 border-4 border-slate-200 border-t-brand-red rounded-full animate-spin" />
     </div>
   );
 }

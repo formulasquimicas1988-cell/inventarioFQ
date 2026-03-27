@@ -1,145 +1,145 @@
-import { useState, useEffect, useRef } from 'react';
-import { Search, X, ChevronDown } from 'lucide-react';
-import { formatNumber } from '../../lib/utils';
-import { cn } from '../../lib/utils';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, X } from 'lucide-react';
+import api from '../../lib/api';
 
-export default function ProductoSearch({ productos = [], value, onChange, error, placeholder = 'Buscar producto por nombre o código...' }) {
-  const [query,    setQuery]    = useState('');
-  const [open,     setOpen]     = useState(false);
-  const [filtered, setFiltered] = useState([]);
-  const inputRef    = useRef();
-  const containerRef = useRef();
+export default function ProductoSearch({ value, onChange, placeholder = 'Buscar producto...', disabled = false }) {
+  const [inputText, setInputText] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
+  const debounceRef = useRef(null);
+  const containerRef = useRef(null);
 
-  const selected = productos.find(p => String(p.id) === String(value));
-
-  // Filtrado en tiempo real con debounce 200ms
+  // When value changes externally (product selected or cleared), sync input text
   useEffect(() => {
-    const t = setTimeout(() => {
-      const q = query.toLowerCase().trim();
-      setFiltered(
-        q
-          ? productos.filter(p =>
-              p.nombre.toLowerCase().includes(q) ||
-              p.codigo.toLowerCase().includes(q)
-            ).slice(0, 30)
-          : productos.slice(0, 30)
-      );
-    }, 200);
-    return () => clearTimeout(t);
-  }, [query, productos]);
+    if (value) {
+      setInputText(value.nombre || '');
+    } else {
+      setInputText('');
+    }
+  }, [value]);
 
-  // Cerrar al hacer clic afuera
+  // Close dropdown on outside click
   useEffect(() => {
-    const handler = e => {
+    const handleClickOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
         setOpen(false);
-        setQuery('');
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  function handleOpen() {
-    setOpen(true);
-    setQuery('');
-    setTimeout(() => inputRef.current?.focus(), 50);
-  }
+  const fetchResults = useCallback(async (text) => {
+    if (!text || text.trim().length < 1) {
+      setResults([]);
+      setOpen(false);
+      setFetchError(false);
+      return;
+    }
+    setLoading(true);
+    setFetchError(false);
+    try {
+      const res = await api.get('/api/productos', { params: { search: text, activo: 1, limit: 20 } });
+      const data = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.data)
+        ? res.data.data
+        : [];
+      setResults(data);
+      setOpen(true);
+    } catch {
+      setResults([]);
+      setFetchError(true);
+      setOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  function handleSelect(p) {
-    onChange(String(p.id));
-    setOpen(false);
-    setQuery('');
-  }
+  const handleInputChange = (e) => {
+    const text = e.target.value;
+    setInputText(text);
+    // If user starts typing after selecting a product, clear the selection
+    if (value) {
+      onChange(null);
+    }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchResults(text);
+    }, 300);
+  };
 
-  function handleClear(e) {
-    e.stopPropagation();
-    onChange('');
+  const handleSelect = (product) => {
+    onChange(product);
+    setInputText(product.nombre);
     setOpen(false);
-    setQuery('');
-  }
+    setResults([]);
+  };
+
+  const handleClear = () => {
+    onChange(null);
+    setInputText('');
+    setResults([]);
+    setOpen(false);
+  };
 
   return (
-    <div ref={containerRef} className="relative">
-      {/* Trigger / display */}
-      <div
-        onClick={handleOpen}
-        className={cn(
-          'flex items-center gap-2 w-full rounded-lg border-2 bg-white cursor-pointer',
-          'px-3 py-2 transition-colors duration-150',
-          open   ? 'border-deep-blue'  : 'border-gray-200',
-          error  ? 'border-red-400'    : '',
-        )}
-        style={{ minHeight: '42px' }}
-      >
-        <Search size={16} className="text-gray-400 flex-shrink-0" />
-
-        {open ? (
-          <input
-            ref={inputRef}
-            className="flex-1 outline-none bg-transparent text-gray-900 placeholder-gray-400"
-            style={{ fontSize: '14px', border: 'none', padding: 0, minHeight: 'auto' }}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder={placeholder}
-            onClick={e => e.stopPropagation()}
-          />
-        ) : (
-          <span
-            className={cn('flex-1 truncate text-sm', selected ? 'text-gray-900 font-medium' : 'text-gray-400')}
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative flex items-center">
+        <Search className="absolute left-3 w-5 h-5 text-slate-400 pointer-events-none" />
+        <input
+          type="text"
+          value={inputText}
+          onChange={handleInputChange}
+          onFocus={() => {
+            if (results.length > 0) setOpen(true);
+            else if (inputText && !value) fetchResults(inputText);
+          }}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="w-full min-h-[48px] pl-10 pr-10 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white disabled:bg-slate-50 disabled:cursor-not-allowed"
+        />
+        {(value || inputText) && !disabled && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-3 h-6 w-6 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full"
           >
-            {selected
-              ? <><span className="font-mono text-xs text-deep-blue bg-blue-50 px-1.5 py-0.5 rounded mr-2">{selected.codigo}</span>{selected.nombre}</>
-              : placeholder
-            }
-          </span>
+            <X className="w-4 h-4" />
+          </button>
         )}
-
-        {selected && !open
-          ? <button type="button" onClick={handleClear} className="text-gray-400 hover:text-gray-600 flex-shrink-0 p-0.5">
-              <X size={15} />
-            </button>
-          : <ChevronDown size={15} className={cn('text-gray-400 flex-shrink-0 transition-transform', open && 'rotate-180')} />
-        }
       </div>
 
-      {/* Dropdown */}
       {open && (
-        <div className="absolute z-[100] left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
-          style={{ maxHeight: '260px', overflowY: 'auto' }}
-        >
-          {filtered.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-gray-400 text-center">
-              No se encontraron productos
-            </div>
-          ) : filtered.map(p => {
-            const sinStock  = parseFloat(p.stock_actual) <= 0;
-            const isSelected = String(p.id) === String(value);
-            return (
+        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          {loading ? (
+            <div className="px-4 py-3 text-slate-500 text-sm">Buscando...</div>
+          ) : fetchError ? (
+            <div className="px-4 py-3 text-red-500 text-sm">Error al conectar con el servidor</div>
+          ) : results.length === 0 ? (
+            <div className="px-4 py-3 text-slate-500 text-sm">Sin resultados</div>
+          ) : (
+            results.map((product) => (
               <button
-                key={p.id}
+                key={product.id}
                 type="button"
-                onClick={() => handleSelect(p)}
-                className={cn(
-                  'w-full text-left px-4 py-2.5 flex items-center justify-between gap-3',
-                  'border-b border-gray-50 last:border-b-0 transition-colors',
-                  isSelected ? 'bg-blue-50' : 'hover:bg-gray-50',
-                  sinStock   ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                )}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleSelect(product);
+                }}
+                className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-b-0"
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-mono text-xs font-semibold text-deep-blue bg-blue-50 px-1.5 py-0.5 rounded flex-shrink-0">
-                    {p.codigo}
-                  </span>
-                  <span className="text-sm font-medium text-gray-800 truncate">{p.nombre}</span>
-                </div>
-                <span className={cn('text-xs font-semibold flex-shrink-0', sinStock ? 'text-red-500' : 'text-gray-500')}>
-                  {formatNumber(p.stock_actual)} {p.unidad_medida}
-                  {sinStock ? ' ⚠' : ''}
+                <span className="font-medium text-slate-800 text-sm">
+                  [{product.codigo}] — {product.nombre}
+                </span>
+                <span className="ml-2 text-xs text-slate-500">
+                  (Stock: {product.stock_actual != null ? Number(product.stock_actual).toLocaleString('es-MX') : '—'} {product.unidad_medida})
                 </span>
               </button>
-            );
-          })}
+            ))
+          )}
         </div>
       )}
     </div>

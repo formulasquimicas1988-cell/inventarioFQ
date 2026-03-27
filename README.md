@@ -1,174 +1,174 @@
-# Fórmulas Químicas — Sistema de Inventario
+# Inventario Fórmulas Químicas
 
-Sistema web completo para gestión de inventario de productos químicos de limpieza.
+Sistema de gestión de inventario para Fórmulas Químicas. Permite registrar productos, categorías, entradas, salidas y ajustes de inventario, con reportes en Excel y alertas de stock crítico.
 
-**Stack:** React + Vite + Tailwind CSS | Node.js + Express | MySQL (XAMPP)
+## Stack Tecnológico
 
----
-
-## Requisitos previos
-
-- [XAMPP](https://www.apachefriends.org/) con MySQL activo
-- [Node.js](https://nodejs.org/) v18 o superior
-- npm v9 o superior
+- **Frontend:** React 18 + Vite + Tailwind CSS
+- **Backend:** Node.js + Express
+- **Base de datos:** MySQL
+- **Deploy:** Railway
 
 ---
 
-## Instalación paso a paso
+## Configuración Local (XAMPP + MySQL)
 
-### 1. Clonar / descargar el proyecto
+### Requisitos previos
 
-Coloca la carpeta en tu directorio deseado, por ejemplo `C:\inventarioFQ`.
+- Node.js 18+
+- XAMPP (MySQL) o MySQL Server instalado
+- Git
 
-### 2. Configurar la base de datos
+### Pasos
 
-1. Abre **XAMPP Control Panel** y arranca el servicio **MySQL**
-2. Abre el navegador y ve a `http://localhost/phpmyadmin`
-3. Haz clic en **Importar** (pestaña superior)
-4. Selecciona el archivo `db/schema.sql`
-5. Haz clic en **Continuar** — esto crea la base de datos `formulasquimicas` con todos los datos de prueba
+1. **Clonar el repositorio**
+   ```bash
+   git clone <repo-url>
+   cd inventarioFQ
+   ```
 
-### 3. Configurar el servidor (backend)
+2. **Crear la base de datos**
+   - Inicia XAMPP y asegúrate de que MySQL esté corriendo
+   - Abre phpMyAdmin o la consola MySQL
+   - Ejecuta el esquema:
+     ```bash
+     mysql -u root -p < db/schema.sql
+     ```
+   - O copia y pega el contenido de `db/schema.sql` en phpMyAdmin > SQL
+
+3. **Configurar el servidor**
+   ```bash
+   cd server
+   cp .env.example .env
+   ```
+   Edita `.env` con tus credenciales:
+   ```env
+   DB_HOST=localhost
+   DB_PORT=3306
+   DB_USER=root
+   DB_PASSWORD=
+   DB_NAME=formulasquimicas
+   PORT=3001
+   NODE_ENV=development
+   ```
+
+4. **Instalar dependencias del servidor**
+   ```bash
+   cd server
+   npm install
+   ```
+
+5. **Instalar dependencias del cliente**
+   ```bash
+   cd client
+   npm install
+   ```
+
+---
+
+## Comandos de Desarrollo
+
+Desde la raíz del proyecto:
 
 ```bash
-cd server
-npm install
+# Iniciar servidor backend (puerto 3001)
+npm run dev:server
+
+# Iniciar cliente frontend (puerto 5173)
+npm run dev:client
 ```
 
-Verifica el archivo `server/.env` (ya viene configurado para XAMPP por defecto):
-
-```env
-PORT=5000
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=
-DB_NAME=formulasquimicas
-```
-
-> Si tienes contraseña en MySQL, modifica `DB_PASSWORD` en el `.env`.
-
-### 4. Instalar dependencias del cliente (frontend)
-
-```bash
-cd client
-npm install
-```
+Luego abre `http://localhost:5173` en tu navegador.
 
 ---
 
-## Ejecutar el sistema
+## Variables de Entorno
 
-Necesitas **dos terminales** abiertas simultáneamente:
-
-### Terminal 1 — Backend
-
-```bash
-cd server
-npm run dev
-```
-
-Deberías ver:
-```
-🚀 Servidor corriendo en http://localhost:5000
-✅ Conectado a MySQL - Base de datos: formulasquimicas
-```
-
-### Terminal 2 — Frontend
-
-```bash
-cd client
-npm run dev
-```
-
-Deberías ver:
-```
-  VITE v5.x.x  ready in xxx ms
-  ➜  Local:   http://localhost:5173/
-```
-
-### 5. Abrir la aplicación
-
-Navega a **http://localhost:5173** en tu navegador.
+| Variable | Descripción | Ejemplo |
+|----------|-------------|---------|
+| `DB_HOST` | Host de MySQL | `localhost` |
+| `DB_PORT` | Puerto de MySQL | `3306` |
+| `DB_USER` | Usuario de MySQL | `root` |
+| `DB_PASSWORD` | Contraseña de MySQL | *(vacío en XAMPP por defecto)* |
+| `DB_NAME` | Nombre de la base de datos | `formulasquimicas` |
+| `PORT` | Puerto del servidor Express | `3001` |
+| `NODE_ENV` | Entorno | `development` o `production` |
 
 ---
 
-## Módulos del sistema
+## Deploy en Railway
 
-| Módulo | Descripción |
-|--------|-------------|
-| **Dashboard** | Estadísticas generales, gráficas de entradas vs salidas, top 10 productos |
-| **Categorías** | CRUD completo de categorías de productos |
-| **Productos** | CRUD completo con búsqueda en tiempo real, importación desde Excel |
-| **Entradas** | Registro de recepciones de mercancía con proveedor opcional |
-| **Salidas** | Registro de entregas con campo cliente obligatorio |
-| **Ajustes** | Correcciones de inventario con justificación obligatoria |
-| **Historial** | Búsqueda y filtrado del historial completo de movimientos |
-| **Alertas** | Productos con stock por debajo del mínimo establecido |
-| **Reportes** | Exportación a Excel de inventario y movimientos |
+### Paso 1: Crear el proyecto en Railway
+
+1. Ve a [railway.app](https://railway.app) y crea una cuenta
+2. Haz clic en "New Project"
+3. Selecciona "Deploy from GitHub repo"
+4. Conecta tu repositorio de GitHub
+
+### Paso 2: Agregar plugin MySQL
+
+1. En tu proyecto Railway, haz clic en "New" → "Database" → "MySQL"
+2. Railway creará una base de datos MySQL y expondrá las variables de entorno automáticamente
+
+### Paso 3: Ejecutar el esquema en Railway MySQL
+
+1. En el plugin de MySQL en Railway, ve a la pestaña "Data"
+2. Haz clic en "Connect" para obtener las credenciales de conexión
+3. Usa un cliente MySQL (TablePlus, DBeaver, MySQL Workbench) con esas credenciales
+4. Ejecuta el contenido de `db/schema.sql`
+
+   O bien, usa el CLI de Railway:
+   ```bash
+   railway run mysql -h $MYSQLHOST -P $MYSQLPORT -u $MYSQLUSER -p$MYSQLPASSWORD $MYSQLDATABASE < db/schema.sql
+   ```
+
+### Paso 4: Configurar variables de entorno en Railway
+
+En Railway, ve a tu servicio → "Variables" y agrega:
+
+```
+DB_HOST=${{MySQL.MYSQLHOST}}
+DB_PORT=${{MySQL.MYSQLPORT}}
+DB_USER=${{MySQL.MYSQLUSER}}
+DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}
+DB_NAME=${{MySQL.MYSQLDATABASE}}
+NODE_ENV=production
+```
+
+*Railway puede auto-referenciar las variables del plugin MySQL usando la sintaxis `${{MySQL.VARIABLE}}`.*
+
+### Paso 5: Deploy
+
+Railway detectará automáticamente el `railway.toml` y:
+1. Ejecutará `npm run build` (instala dependencias del cliente y hace build de React)
+2. Iniciará con `npm start` (corre `node server/index.js`)
+
+El servidor sirve el frontend React como archivos estáticos en producción.
 
 ---
 
-## Importación de productos desde Excel
-
-El archivo Excel debe tener las siguientes columnas (fila 1 = encabezados):
-
-| Columna | Descripción | Requerido |
-|---------|-------------|-----------|
-| `codigo` | Código único del producto | ✅ |
-| `nombre` | Nombre del producto | ✅ |
-| `categoria` | Nombre de la categoría | No |
-| `stock_actual` | Stock actual | No (default: 0) |
-| `stock_minimo` | Stock mínimo | No (default: 0) |
-| `unidad_medida` | Unidad (litro, kg, etc.) | No (default: unidad) |
-| `descripcion` | Descripción del producto | No |
-
-> Descarga la plantilla desde el botón **"Plantilla"** en la sección de Productos.
-
----
-
-## Estructura del proyecto
+## Estructura del Proyecto
 
 ```
 inventarioFQ/
 ├── db/
-│   └── schema.sql              # Base de datos con datos de prueba
+│   └── schema.sql          # Esquema MySQL con datos de ejemplo
 ├── server/
-│   ├── controllers/            # Lógica de negocio
-│   │   ├── categoriasController.js
-│   │   ├── productosController.js
-│   │   ├── movimientosController.js
-│   │   ├── dashboardController.js
-│   │   └── reportesController.js
-│   ├── routes/                 # Rutas Express
-│   │   ├── categorias.js
-│   │   ├── productos.js
-│   │   ├── movimientos.js
-│   │   ├── dashboard.js
-│   │   └── reportes.js
-│   ├── db.js                   # Conexión MySQL
-│   ├── index.js                # Servidor Express
-│   ├── .env                    # Variables de entorno
+│   ├── controllers/        # Lógica de negocio
+│   ├── routes/             # Rutas de la API
+│   ├── db.js               # Pool de conexiones MySQL
+│   ├── index.js            # Servidor Express
 │   └── package.json
-└── client/
-    ├── src/
-    │   ├── components/
-    │   │   ├── ui/             # Componentes reutilizables
-    │   │   ├── Layout.jsx
-    │   │   ├── Sidebar.jsx
-    │   │   └── Header.jsx
-    │   ├── context/
-    │   │   ├── AlertContext.jsx
-    │   │   └── ToastContext.jsx
-    │   ├── lib/
-    │   │   ├── api.js
-    │   │   └── utils.js
-    │   ├── pages/              # Páginas de la aplicación
-    │   ├── App.jsx
-    │   └── main.jsx
-    ├── tailwind.config.js
-    ├── vite.config.js
-    └── package.json
+├── client/
+│   ├── src/
+│   │   ├── components/     # Componentes reutilizables
+│   │   ├── context/        # Context API (Toast, Alertas)
+│   │   ├── hooks/          # Custom hooks
+│   │   ├── lib/            # Utilidades y API client
+│   │   └── pages/          # Páginas de la aplicación
+│   └── package.json
+├── package.json            # Scripts raíz
+└── railway.toml            # Configuración de deploy
 ```
 
 ---
@@ -177,38 +177,13 @@ inventarioFQ/
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/api/categorias` | Listar categorías |
-| POST | `/api/categorias` | Crear categoría |
-| PUT | `/api/categorias/:id` | Actualizar categoría |
-| DELETE | `/api/categorias/:id` | Eliminar categoría |
-| GET | `/api/productos?search=&categoria=` | Listar productos |
+| GET | `/api/dashboard/stats` | Estadísticas generales |
+| GET | `/api/productos` | Lista de productos |
 | POST | `/api/productos` | Crear producto |
-| PUT | `/api/productos/:id` | Actualizar producto |
-| DELETE | `/api/productos/:id` | Eliminar producto |
-| POST | `/api/productos/import` | Importar desde Excel |
-| GET | `/api/movimientos?tipo=&search=&from=&to=` | Listar movimientos |
-| POST | `/api/movimientos` | Registrar movimiento |
-| GET | `/api/dashboard/stats` | Estadísticas del dashboard |
-| GET | `/api/dashboard/chart-data` | Datos para la gráfica |
-| GET | `/api/dashboard/top-salidas` | Top 10 más vendidos |
-| GET | `/api/dashboard/menos-salidas` | Top 10 menos vendidos |
-| GET | `/api/dashboard/alertas-count` | Conteo de alertas |
-| GET | `/api/reportes/inventario` | Exportar inventario (.xlsx) |
-| GET | `/api/reportes/movimientos?from=&to=&tipo=` | Exportar movimientos (.xlsx) |
-
----
-
-## Solución de problemas
-
-**❌ Error conectando a MySQL**
-- Verifica que XAMPP esté corriendo y MySQL esté activo
-- Confirma que la base de datos `formulasquimicas` fue importada correctamente
-- Revisa las credenciales en `server/.env`
-
-**❌ Puerto en uso**
-- Cambia `PORT=5001` en `server/.env` si el puerto 5000 está ocupado
-- Actualiza el proxy en `client/vite.config.js` con el nuevo puerto
-
-**❌ Error en npm install**
-- Asegúrate de tener Node.js v18+: `node --version`
-- Elimina `node_modules` y vuelve a ejecutar `npm install`
+| GET | `/api/categorias` | Lista de categorías |
+| POST | `/api/movimientos/entrada` | Registrar entrada |
+| POST | `/api/movimientos/salida` | Registrar salida |
+| POST | `/api/movimientos/ajuste` | Registrar ajuste |
+| GET | `/api/alertas/criticos` | Productos con stock crítico |
+| GET | `/api/reportes/inventario` | Exportar inventario a Excel |
+| GET | `/api/reportes/movimientos` | Exportar movimientos a Excel |

@@ -1,32 +1,38 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import api from '../lib/api';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import api from '../lib/api'
 
-const AlertContext = createContext({ count: 0, refresh: () => {} });
+const AlertContext = createContext(null)
 
 export function AlertProvider({ children }) {
-  const [count, setCount] = useState(0);
+  const [criticosCount, setCriticosCount] = useState(0)
+  const [criticosData, setCriticosData] = useState([])
 
-  const refresh = useCallback(async () => {
+  const refreshAlertas = useCallback(async () => {
     try {
-      const { data } = await api.get('/dashboard/alertas-count');
-      setCount(data.count || 0);
-    } catch {
-      // silencioso
+      const res = await api.get('/api/alertas/criticos')
+      const data = Array.isArray(res.data) ? res.data : []
+      setCriticosData(data)
+      setCriticosCount(data.length)
+    } catch (err) {
+      console.error('AlertContext refresh error:', err)
     }
-  }, []);
+  }, [])
 
   useEffect(() => {
-    refresh();
-    // Refrescar cada 60 segundos
-    const id = setInterval(refresh, 60_000);
-    return () => clearInterval(id);
-  }, [refresh]);
+    refreshAlertas()
+    const interval = setInterval(refreshAlertas, 60000)
+    return () => clearInterval(interval)
+  }, [refreshAlertas])
 
   return (
-    <AlertContext.Provider value={{ count, refresh }}>
+    <AlertContext.Provider value={{ criticosCount, criticosData, refreshAlertas }}>
       {children}
     </AlertContext.Provider>
-  );
+  )
 }
 
-export const useAlerts = () => useContext(AlertContext);
+export function useAlerts() {
+  const ctx = useContext(AlertContext)
+  if (!ctx) throw new Error('useAlerts must be used within AlertProvider')
+  return ctx
+}
