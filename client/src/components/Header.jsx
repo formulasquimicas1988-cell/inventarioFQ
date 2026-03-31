@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useUser } from '../context/UserContext'
-import { LogOut } from 'lucide-react'
+import { LogOut, Menu } from 'lucide-react'
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
@@ -13,6 +13,7 @@ const PAGE_TITLES = {
   '/historial': 'Historial de Movimientos',
   '/alertas': 'Alertas de Stock',
   '/reportes': 'Reportes',
+  '/danados': 'Productos Dañados',
 }
 
 function getPageTitle(pathname) {
@@ -31,7 +32,7 @@ function formatDateTime(date) {
   })
 }
 
-export default function Header() {
+export default function Header({ onMenuToggle }) {
   const location = useLocation()
   const { usuario, logout } = useUser()
   const [now, setNow] = useState(new Date())
@@ -45,11 +46,22 @@ export default function Header() {
 
   return (
     <header
-      className="bg-brand-blue flex items-center justify-between px-6 flex-shrink-0"
+      className="bg-brand-blue flex items-center justify-between px-3 md:px-6 flex-shrink-0"
       style={{ height: '64px' }}
     >
-      <h1 className="text-white font-semibold text-lg">{title}</h1>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-3 min-w-0">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={onMenuToggle}
+          className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+          aria-label="Abrir menú"
+        >
+          <Menu size={20} />
+        </button>
+        <h1 className="text-white font-semibold text-base md:text-lg truncate">{title}</h1>
+      </div>
+
+      <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
         <div className="text-white/80 text-sm capitalize hidden sm:block">
           {formatDateTime(now)}
         </div>

@@ -10,6 +10,7 @@ import PageLoader from '../components/ui/PageLoader';
 import EmptyState from '../components/ui/EmptyState';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { formatDate } from '../lib/utils';
+import { Plus, Trash2 } from 'lucide-react';
 
 function getNowDatetimeLocal() {
   const now = new Date();
@@ -17,12 +18,13 @@ function getNowDatetimeLocal() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
+const emptyItem = () => ({ id: Date.now() + Math.random(), producto: null, cantidad: '' });
+
 const emptyForm = () => ({
-  producto: null,
-  cantidad: '',
   cliente: '',
   fecha: getNowDatetimeLocal(),
   notas: '',
+  items: [emptyItem()],
 });
 
 export default function Salidas() {
@@ -90,36 +92,66 @@ export default function Salidas() {
     }
   };
 
+  const updateItem = (id, field, value) => {
+    setForm((f) => ({
+      ...f,
+      items: f.items.map((item) => item.id === id ? { ...item, [field]: value } : item),
+    }));
+  };
+
+  const addItem = () => {
+    setForm((f) => ({ ...f, items: [...f.items, emptyItem()] }));
+  };
+
+  const removeItem = (id) => {
+    setForm((f) => ({ ...f, items: f.items.filter((item) => item.id !== id) }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.producto) {
-      error('Selecciona un producto');
-      return;
-    }
-    if (!form.cantidad || parseFloat(form.cantidad) <= 0) {
-      error('La cantidad debe ser mayor a 0');
-      return;
-    }
+
     if (!form.cliente.trim()) {
       error('El campo Cliente es obligatorio');
       return;
     }
+
+    for (const item of form.items) {
+      if (!item.producto) {
+        error('Selecciona un producto en todas las filas');
+        return;
+      }
+      if (!item.cantidad || parseFloat(item.cantidad) <= 0) {
+        error('Todas las cantidades deben ser mayores a 0');
+        return;
+      }
+    }
+
+    // Check for duplicate products
+    const ids = form.items.map((i) => i.producto.id);
+    if (new Set(ids).size !== ids.length) {
+      error('Hay productos duplicados en la lista');
+      return;
+    }
+
     setSaving(true);
     try {
-      await api.post('/api/movimientos/salida', {
-        producto_id: form.producto.id,
-        cantidad: parseFloat(form.cantidad),
-        cliente: form.cliente.trim(),
-        fecha: form.fecha || getNowDatetimeLocal(),
-        notas: form.notas || '',
-        usuario,
-      });
-      success('Salida registrada correctamente');
+      for (const item of form.items) {
+        await api.post('/api/movimientos/salida', {
+          producto_id: item.producto.id,
+          cantidad: parseFloat(item.cantidad),
+          cliente: form.cliente.trim(),
+          fecha: form.fecha || getNowDatetimeLocal(),
+          notas: form.notas || '',
+          usuario,
+        });
+      }
+      const count = form.items.length;
+      success(count === 1 ? 'Salida registrada correctamente' : `${count} salidas registradas correctamente`);
       setForm(emptyForm());
       setPage(1);
       fetchSalidas(search, 1);
     } catch (err) {
-      error(err?.response?.data?.message || 'Error al registrar la salida');
+      error(err?.message || 'Error al registrar la salida');
     } finally {
       setSaving(false);
     }
@@ -133,34 +165,63 @@ export default function Salidas() {
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
         <h2 className="text-lg font-semibold text-slate-700 mb-4">Registrar Salida</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+          {/* Products list */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Productos <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={addItem}
+                className="flex items-center gap-1 text-sm text-brand-red hover:text-red-700 font-medium"
+              >
+                <Plus size={16} /> Agregar producto
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {form.items.map((item, idx) => (
+                <div key={item.id} className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-xs text-slate-400 font-mono w-5 shrink-0">{idx + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <ProductoSearch
+                      value={item.producto}
+                      onChange={(p) => updateItem(item.id, 'producto', p)}
+                      placeholder="Buscar producto por nombre o código..."
+                    />
+                  </div>
+                  <div className="w-36 shrink-0">
+                    <input
+                      type="number"
+                      value={item.cantidad}
+                      onChange={(e) => updateItem(item.id, 'cantidad', e.target.value)}
+                      min="0.01"
+                      step="0.01"
+                      placeholder="Cantidad"
+                      className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                    />
+                  </div>
+                  {item.producto && (
+                    <span className="text-xs text-slate-400 w-12 shrink-0">{item.producto.unidad_medida}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeItem(item.id)}
+                    disabled={form.items.length === 1}
+                    className="text-slate-400 hover:text-red-500 disabled:opacity-20 disabled:cursor-not-allowed shrink-0"
+                    title="Eliminar fila"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Shared fields */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Producto <span className="text-red-500">*</span>
-              </label>
-              <ProductoSearch
-                value={form.producto}
-                onChange={(p) => setForm((f) => ({ ...f, producto: p }))}
-                placeholder="Buscar producto por nombre o código..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Cantidad <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                value={form.cantidad}
-                onChange={(e) => setForm((f) => ({ ...f, cantidad: e.target.value }))}
-                min="0.01"
-                step="0.01"
-                placeholder="0.00"
-                required
-                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
-              />
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Cliente <span className="text-red-500">*</span>
@@ -185,7 +246,7 @@ export default function Salidas() {
               />
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Notas</label>
               <textarea
                 value={form.notas}
@@ -199,7 +260,7 @@ export default function Salidas() {
 
           <div className="flex justify-end">
             <SafeButton type="submit" loading={saving} variant="primary" className="min-w-[180px]">
-              Registrar Salida
+              {form.items.length > 1 ? `Registrar ${form.items.length} Salidas` : 'Registrar Salida'}
             </SafeButton>
           </div>
         </form>

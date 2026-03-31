@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import React, { useState } from 'react'
+import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Tag, ArrowDownCircle, ArrowUpCircle,
   SlidersHorizontal, History, Bell, FileBarChart2, ChevronLeft, ChevronRight, PackageX
@@ -19,12 +19,11 @@ const NAV_ITEMS = [
   { path: '/reportes', label: 'Reportes', icon: FileBarChart2 },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen, onMobileClose }) {
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true'
   })
   const { criticosCount } = useAlerts()
-  const location = useLocation()
 
   const toggle = () => {
     setCollapsed(prev => {
@@ -36,7 +35,11 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="sidebar-transition flex flex-col flex-shrink-0 h-screen bg-brand-blue overflow-hidden"
+      className={`
+        sidebar-transition flex flex-col flex-shrink-0 h-screen bg-brand-blue overflow-hidden
+        fixed md:relative inset-y-0 left-0 z-40 md:z-auto
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}
       style={{ width: collapsed ? '72px' : '260px' }}
     >
       {/* Logo area */}
@@ -62,6 +65,7 @@ export default function Sidebar() {
           <NavLink
             key={path}
             to={path}
+            onClick={onMobileClose}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 transition-colors relative group
                ${collapsed ? 'justify-center' : ''}
@@ -108,8 +112,8 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Collapse toggle */}
-      <div className="flex-shrink-0 border-t border-white/10 p-2">
+      {/* Collapse toggle — desktop only */}
+      <div className="hidden md:block flex-shrink-0 border-t border-white/10 p-2">
         <button
           onClick={toggle}
           className="w-full flex items-center justify-center rounded-lg text-white/75 hover:text-white hover:bg-white/5 transition-colors"

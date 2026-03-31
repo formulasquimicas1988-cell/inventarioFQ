@@ -243,7 +243,7 @@ export default function Productos() {
 
       <div className="bg-white rounded-xl shadow-sm p-6">
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="flex flex-col md:flex-row gap-3 mb-4">
           <SearchInput
             value={search}
             onChange={setSearch}
