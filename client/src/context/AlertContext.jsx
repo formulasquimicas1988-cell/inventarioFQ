@@ -1,13 +1,25 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import api from '../lib/api'
 
+const STORAGE_KEY = 'fq_sesion'
+
 const AlertContext = createContext(null)
+
+function hasToken() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return !!(raw && JSON.parse(raw)?.token)
+  } catch {
+    return false
+  }
+}
 
 export function AlertProvider({ children }) {
   const [criticosCount, setCriticosCount] = useState(0)
   const [criticosData, setCriticosData] = useState([])
 
   const refreshAlertas = useCallback(async () => {
+    if (!hasToken()) return
     try {
       const res = await api.get('/api/alertas/criticos')
       const data = Array.isArray(res.data) ? res.data : []

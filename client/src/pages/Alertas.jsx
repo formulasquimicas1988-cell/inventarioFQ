@@ -109,13 +109,13 @@ export default function Alertas() {
                       <td className="py-3 px-3 font-semibold text-slate-800">{p.nombre}</td>
                       <td className="py-3 px-3 text-slate-500">{p.categoria_nombre || '—'}</td>
                       <td className="py-3 px-3 text-right font-bold text-red-600">
-                        {Number(p.stock_actual || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {Number(p.stock_actual || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-3 px-3 text-right text-slate-600">
-                        {Number(p.stock_minimo || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {Number(p.stock_minimo || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </td>
                       <td className={`py-3 px-3 text-right font-bold ${highDeficit ? 'text-red-700' : 'text-amber-700'}`}>
-                        {Number(Math.max(deficit, 0)).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {Number(Math.max(deficit, 0)).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-3 px-3 text-slate-500">{p.unidad_medida}</td>
                     </tr>

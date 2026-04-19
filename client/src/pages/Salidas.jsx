@@ -196,9 +196,10 @@ export default function Salidas() {
                     <input
                       type="number"
                       value={item.cantidad}
+                      onKeyDown={(e) => { if (e.key === '.' || e.key === ',') e.preventDefault(); }}
                       onChange={(e) => updateItem(item.id, 'cantidad', e.target.value)}
-                      min="0.01"
-                      step="0.01"
+                      min="1"
+                      step="1"
                       placeholder="Cantidad"
                       className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
                     />
@@ -307,14 +308,14 @@ export default function Salidas() {
                       <td className="py-3 px-3 font-medium text-slate-800">{s.nombre || s.producto_nombre}</td>
                       <td className="py-3 px-3 font-mono text-slate-500 text-xs">{s.codigo || s.producto_codigo}</td>
                       <td className="py-3 px-3 text-right font-semibold text-red-600">
-                        -{Number(s.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {s.unidad_medida}
+                        -{Number(s.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {s.unidad_medida}
                       </td>
                       <td className="py-3 px-3 text-slate-700">{s.cliente || '—'}</td>
                       <td className="py-3 px-3 text-right text-slate-500">
-                        {s.stock_anterior != null ? Number(s.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        {s.stock_anterior != null ? Number(s.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                       </td>
                       <td className="py-3 px-3 text-right text-slate-700 font-medium">
-                        {s.stock_resultante != null ? Number(s.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        {s.stock_resultante != null ? Number(s.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                       </td>
                       <td className="py-3 px-3 text-slate-400 text-xs max-w-[150px] truncate">{s.notas || '—'}</td>
                       <td className="py-3 px-3">
@@ -348,7 +349,7 @@ export default function Salidas() {
         onClose={() => setCancelItem(null)}
         onConfirm={handleCancelar}
         title="Cancelar salida"
-        message={cancelItem ? `¿Cancelar la salida de ${Number(cancelItem.cantidad).toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${cancelItem.unidad_medida} de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior.` : ''}
+        message={cancelItem ? `¿Cancelar la salida de ${Number(cancelItem.cantidad).toLocaleString('es-MX', { minimumFractionDigits: 0 })} ${cancelItem.unidad_medida} de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior.` : ''}
         confirmText="Sí, cancelar"
         cancelText="No, mantener"
       />

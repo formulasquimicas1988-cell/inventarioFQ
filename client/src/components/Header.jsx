@@ -14,6 +14,15 @@ const PAGE_TITLES = {
   '/alertas': 'Alertas de Stock',
   '/reportes': 'Reportes',
   '/danados': 'Productos Dañados',
+  '/auditoria': 'Auditoría del Sistema',
+  '/ventas': 'Gestión de Ventas',
+  '/caja': 'Caja',
+}
+
+const ROL_BADGE = {
+  admin: { label: 'Admin', cls: 'bg-brand-red' },
+  caja: { label: 'Caja', cls: 'bg-emerald-600' },
+  almacen: { label: 'Almacén', cls: 'bg-slate-500' },
 }
 
 function getPageTitle(pathname) {
@@ -22,6 +31,7 @@ function getPageTitle(pathname) {
 
 function formatDateTime(date) {
   return date.toLocaleString('es-MX', {
+    timeZone: 'America/Tegucigalpa',
     weekday: 'long',
     day: '2-digit',
     month: 'long',
@@ -34,7 +44,7 @@ function formatDateTime(date) {
 
 export default function Header({ onMenuToggle }) {
   const location = useLocation()
-  const { usuario, logout } = useUser()
+  const { usuario, rol, logout } = useUser()
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -43,6 +53,7 @@ export default function Header({ onMenuToggle }) {
   }, [])
 
   const title = getPageTitle(location.pathname)
+  const badge = ROL_BADGE[rol] || ROL_BADGE.almacen
 
   return (
     <header
@@ -69,7 +80,12 @@ export default function Header({ onMenuToggle }) {
           <div className="w-7 h-7 rounded-full bg-brand-red flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">{usuario.charAt(0).toUpperCase()}</span>
           </div>
-          <span className="text-white text-sm font-medium hidden sm:block">{usuario}</span>
+          <div className="hidden sm:flex flex-col items-start">
+            <span className="text-white text-sm font-medium leading-tight">{usuario}</span>
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded text-white ${badge.cls}`}>
+              {badge.label}
+            </span>
+          </div>
           <button
             onClick={logout}
             title="Cambiar usuario"

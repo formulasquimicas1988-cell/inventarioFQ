@@ -1,5 +1,6 @@
 const pool = require('../db');
 const XLSX = require('xlsx');
+const { logAudit, getClientIp } = require('../lib/audit');
 
 // GET /api/productos
 const getAll = async (req, res) => {
@@ -22,10 +23,10 @@ const getAll = async (req, res) => {
       params.push(s, s, s);
     }
 
-    // categoria filter
+    // categoria filter (busca en categoria_id o categoria_id_2)
     if (categoria_id && categoria_id !== 'all') {
-      where.push('p.categoria_id = ?');
-      params.push(parseInt(categoria_id));
+      where.push('(p.categoria_id = ? OR p.categoria_id_2 = ?)');
+      params.push(parseInt(categoria_id), parseInt(categoria_id));
     }
 
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
@@ -34,15 +35,17 @@ const getAll = async (req, res) => {
       `SELECT COUNT(*) AS total
        FROM productos p
        LEFT JOIN categorias c ON p.categoria_id = c.id
+       LEFT JOIN categorias c2 ON p.categoria_id_2 = c2.id
        ${whereClause}`,
       params
     );
     const total = countRows[0].total;
 
     const [rows] = await pool.query(
-      `SELECT p.*, c.nombre AS categoria_nombre
+      `SELECT p.*, c.nombre AS categoria_nombre, c2.nombre AS categoria_nombre_2
        FROM productos p
        LEFT JOIN categorias c ON p.categoria_id = c.id
+       LEFT JOIN categorias c2 ON p.categoria_id_2 = c2.id
        ${whereClause}
        ORDER BY p.nombre ASC
        LIMIT ? OFFSET ?`,
@@ -61,9 +64,10 @@ const getAll = async (req, res) => {
 const getById = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT p.*, c.nombre AS categoria_nombre
+      `SELECT p.*, c.nombre AS categoria_nombre, c2.nombre AS categoria_nombre_2
        FROM productos p
        LEFT JOIN categorias c ON p.categoria_id = c.id
+       LEFT JOIN categorias c2 ON p.categoria_id_2 = c2.id
        WHERE p.id = ?`,
       [req.params.id]
     );
@@ -78,7 +82,9 @@ const getById = async (req, res) => {
 // POST /api/productos
 const create = async (req, res) => {
   try {
-    const { codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida } = req.body;
+    const { codigo, nombre, categoria_id, categoria_id_2, stock_actual, stock_minimo, unidad_medida,
+            precio_a, precio_b, precio_c, precio_d,
+            favorito, sin_inventario, descripcion_editable, es_grupo, producto_base_id } = req.body;
 
     if (!codigo || !codigo.trim()) return res.status(400).json({ error: 'El código es requerido' });
     if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
@@ -91,21 +97,34 @@ const create = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      `INSERT INTO productos (codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO productos (codigo, nombre, categoria_id, categoria_id_2, stock_actual, stock_minimo, unidad_medida,
+        precio_a, precio_b, precio_c, precio_d,
+        favorito, sin_inventario, descripcion_editable, es_grupo, producto_base_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         codigo.trim(),
         nombre.trim(),
         categoria_id || null,
-        parseFloat(stock_actual) || 0,
-        parseFloat(stock_minimo) || 0,
-        unidad_medida.trim()
+        categoria_id_2 || null,
+        parseInt(stock_actual) || 0,
+        parseInt(stock_minimo) || 0,
+        unidad_medida.trim(),
+        precio_a != null && precio_a !== '' ? parseFloat(precio_a) : null,
+        precio_b != null && precio_b !== '' ? parseFloat(precio_b) : null,
+        precio_c != null && precio_c !== '' ? parseFloat(precio_c) : null,
+        precio_d != null && precio_d !== '' ? parseFloat(precio_d) : null,
+        favorito ? 1 : 0,
+        sin_inventario ? 1 : 0,
+        descripcion_editable ? 1 : 0,
+        es_grupo ? 1 : 0,
+        producto_base_id || null,
       ]
     );
 
     const productoId = result.insertId;
-    const stockInicial = parseFloat(stock_actual) || 0;
+    const stockInicial = parseInt(stock_actual) || 0;
     const { usuario } = req.body;
+    const ip = getClientIp(req);
 
     await pool.query(
       `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, notas, usuario)
@@ -113,9 +132,13 @@ const create = async (req, res) => {
       [productoId, stockInicial, usuario || null]
     );
 
+    await logAudit({ usuario, accion: 'creó', modulo: 'Producto', detalle: `Creó producto "${nombre.trim()}" (${codigo.trim()}) con stock inicial ${stockInicial}`, ip });
+
     const [rows] = await pool.query(
-      `SELECT p.*, c.nombre AS categoria_nombre
-       FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id
+      `SELECT p.*, c.nombre AS categoria_nombre, c2.nombre AS categoria_nombre_2
+       FROM productos p
+       LEFT JOIN categorias c ON p.categoria_id = c.id
+       LEFT JOIN categorias c2 ON p.categoria_id_2 = c2.id
        WHERE p.id = ?`,
       [productoId]
     );
@@ -130,7 +153,9 @@ const create = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { codigo, nombre, categoria_id, stock_minimo, unidad_medida } = req.body;
+    const { codigo, nombre, categoria_id, categoria_id_2, stock_minimo, unidad_medida,
+            precio_a, precio_b, precio_c, precio_d,
+            favorito, sin_inventario, descripcion_editable, es_grupo, producto_base_id } = req.body;
 
     if (!codigo || !codigo.trim()) return res.status(400).json({ error: 'El código es requerido' });
     if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
@@ -144,23 +169,41 @@ const update = async (req, res) => {
 
     // NOTE: stock_actual is NOT updated here — only via movements
     const [result] = await pool.query(
-      `UPDATE productos SET codigo = ?, nombre = ?, categoria_id = ?, stock_minimo = ?, unidad_medida = ?
+      `UPDATE productos SET codigo = ?, nombre = ?, categoria_id = ?, categoria_id_2 = ?, stock_minimo = ?, unidad_medida = ?,
+        precio_a = ?, precio_b = ?, precio_c = ?, precio_d = ?,
+        favorito = ?, sin_inventario = ?, descripcion_editable = ?, es_grupo = ?, producto_base_id = ?
        WHERE id = ?`,
       [
         codigo.trim(),
         nombre.trim(),
         categoria_id || null,
-        parseFloat(stock_minimo) || 0,
+        categoria_id_2 || null,
+        parseInt(stock_minimo) || 0,
         unidad_medida.trim(),
+        precio_a != null && precio_a !== '' ? parseFloat(precio_a) : null,
+        precio_b != null && precio_b !== '' ? parseFloat(precio_b) : null,
+        precio_c != null && precio_c !== '' ? parseFloat(precio_c) : null,
+        precio_d != null && precio_d !== '' ? parseFloat(precio_d) : null,
+        favorito ? 1 : 0,
+        sin_inventario ? 1 : 0,
+        descripcion_editable ? 1 : 0,
+        es_grupo ? 1 : 0,
+        producto_base_id || null,
         id
       ]
     );
 
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
+    const ip = getClientIp(req);
+    const { usuario } = req.body;
+    await logAudit({ usuario, accion: 'editó', modulo: 'Producto', detalle: `Editó producto "${nombre.trim()}" (${codigo.trim()})`, ip });
+
     const [rows] = await pool.query(
-      `SELECT p.*, c.nombre AS categoria_nombre
-       FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id
+      `SELECT p.*, c.nombre AS categoria_nombre, c2.nombre AS categoria_nombre_2
+       FROM productos p
+       LEFT JOIN categorias c ON p.categoria_id = c.id
+       LEFT JOIN categorias c2 ON p.categoria_id_2 = c2.id
        WHERE p.id = ?`,
       [id]
     );
@@ -177,6 +220,11 @@ const remove = async (req, res) => {
     const { id } = req.params;
     const [result] = await pool.query('UPDATE productos SET activo = 0 WHERE id = ?', [id]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    const ip = getClientIp(req);
+    const usuario = req.body?.usuario || req.query?.usuario || null;
+    await logAudit({ usuario, accion: 'eliminó', modulo: 'Producto', detalle: `Desactivó producto ID ${id}`, ip });
+
     res.json({ message: 'Producto desactivado correctamente' });
   } catch (err) {
     console.error('remove producto error:', err);
@@ -208,8 +256,8 @@ const importarExcel = async (req, res) => {
       const codigo = (row['codigo'] || row['Codigo'] || row['CODIGO'] || row['code'] || '').toString().trim();
       const nombre = (row['nombre'] || row['Nombre'] || row['NOMBRE'] || row['name'] || '').toString().trim();
       const categoriaName = (row['categoria'] || row['Categoria'] || row['CATEGORIA'] || row['category'] || '').toString().trim();
-      const stockActual = parseFloat(row['stock_actual'] || row['Stock Actual'] || row['stock actual'] || row['stock'] || 0) || 0;
-      const stockMinimo = parseFloat(row['stock_minimo'] || row['Stock Minimo'] || row['stock minimo'] || row['min_stock'] || 0) || 0;
+      const stockActual = parseInt(row['stock_actual'] || row['Stock Actual'] || row['stock actual'] || row['stock'] || 0) || 0;
+      const stockMinimo = parseInt(row['stock_minimo'] || row['Stock Minimo'] || row['stock minimo'] || row['min_stock'] || 0) || 0;
       const unidad = (row['unidad_medida'] || row['Unidad'] || row['UNIDAD'] || row['unit'] || '').toString().trim();
       if (!codigo) { errores.push(`Fila ${rowNum}: código vacío`); continue; }
       if (!nombre) { errores.push(`Fila ${rowNum}: nombre vacío`); continue; }

@@ -149,7 +149,7 @@ export default function Danados() {
               <div className="md:col-span-2">
                 <div className="bg-orange-50 border border-orange-100 rounded-lg px-4 py-3 text-sm text-orange-700">
                   <span className="font-semibold">Stock actual:</span>{' '}
-                  {Number(stockActual).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                  {Number(stockActual).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{' '}
                   {form.producto.unidad_medida}
                 </div>
               </div>
@@ -162,10 +162,11 @@ export default function Danados() {
               <input
                 type="number"
                 value={form.cantidad}
+                onKeyDown={(e) => { if (e.key === '.' || e.key === ',') e.preventDefault(); }}
                 onChange={(e) => setForm((f) => ({ ...f, cantidad: e.target.value }))}
-                min="0.01"
-                step="0.01"
-                placeholder="0.00"
+                min="1"
+                step="1"
+                placeholder="0"
                 required
                 className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
               />
@@ -244,13 +245,13 @@ export default function Danados() {
                       <td className="py-3 px-3 font-medium text-slate-800">{d.nombre || d.producto_nombre}</td>
                       <td className="py-3 px-3 font-mono text-slate-500 text-xs">{d.codigo || d.producto_codigo}</td>
                       <td className="py-3 px-3 text-right font-semibold text-orange-600">
-                        -{Number(d.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {d.unidad_medida}
+                        -{Number(d.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {d.unidad_medida}
                       </td>
                       <td className="py-3 px-3 text-right text-slate-500">
-                        {d.stock_anterior != null ? Number(d.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        {d.stock_anterior != null ? Number(d.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                       </td>
                       <td className="py-3 px-3 text-right text-slate-700 font-medium">
-                        {d.stock_resultante != null ? Number(d.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        {d.stock_resultante != null ? Number(d.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                       </td>
                       <td className="py-3 px-3 text-slate-500 text-xs max-w-[200px] truncate">{d.notas || '—'}</td>
                       <td className="py-3 px-3">
@@ -284,7 +285,7 @@ export default function Danados() {
         onClose={() => setCancelItem(null)}
         onConfirm={handleCancelar}
         title="Cancelar registro de daño"
-        message={cancelItem ? `¿Cancelar el registro de daño de ${Number(cancelItem.cantidad).toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${cancelItem.unidad_medida} de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior.` : ''}
+        message={cancelItem ? `¿Cancelar el registro de daño de ${Number(cancelItem.cantidad).toLocaleString('es-MX', { minimumFractionDigits: 0 })} ${cancelItem.unidad_medida} de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior.` : ''}
         confirmText="Sí, cancelar"
         cancelText="No, mantener"
       />

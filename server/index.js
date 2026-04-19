@@ -1,7 +1,13 @@
+// Fijar zona horaria antes de cualquier require para que
+// Node.js y mysql2 usen siempre Tegucigalpa (UTC-6, sin cambio de horario)
+process.env.TZ = 'America/Tegucigalpa';
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+
+const authMiddleware = require('./middleware/authMiddleware');
 
 const app = express();
 
@@ -22,14 +28,24 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.set('trust proxy', true); // Para obtener IP real detrás de Railway/proxies
+
+// Proteger todas las rutas /api/* excepto login y health
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth') || req.path === '/health') return next();
+  authMiddleware(req, res, next);
+});
 
 // API Routes
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/categorias', require('./routes/categorias'));
 app.use('/api/productos', require('./routes/productos'));
 app.use('/api/movimientos', require('./routes/movimientos'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/reportes', require('./routes/reportes'));
 app.use('/api/alertas', require('./routes/alertas'));
+app.use('/api/auditoria', require('./routes/auditoria'));
+app.use('/api/ventas', require('./routes/ventas'));
 
 // Health check (must be before the SPA catch-all)
 app.get('/api/health', (req, res) => {

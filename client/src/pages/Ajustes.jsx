@@ -151,7 +151,7 @@ export default function Ajustes() {
               <div className="md:col-span-2">
                 <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-700">
                   <span className="font-semibold">Stock actual:</span>{' '}
-                  {Number(stockActual).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                  {Number(stockActual).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{' '}
                   {form.producto.unidad_medida}
                 </div>
               </div>
@@ -164,10 +164,11 @@ export default function Ajustes() {
               <input
                 type="number"
                 value={form.nueva_cantidad}
+                onKeyDown={(e) => { if (e.key === '.' || e.key === ',') e.preventDefault(); }}
                 onChange={(e) => setForm((f) => ({ ...f, nueva_cantidad: e.target.value }))}
                 min="0"
-                step="0.01"
-                placeholder="0.00"
+                step="1"
+                placeholder="0"
                 required
                 className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
               />
@@ -189,15 +190,15 @@ export default function Ajustes() {
               <div className="md:col-span-2">
                 <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm flex flex-wrap gap-4">
                   <span className="text-slate-600">
-                    Stock actual: <strong>{Number(stockActual).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                    Stock actual: <strong>{Number(stockActual).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</strong>
                   </span>
                   <span className="text-slate-400">→</span>
                   <span className="text-slate-600">
-                    Nuevo stock: <strong>{Number(nuevaCantidad).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                    Nuevo stock: <strong>{Number(nuevaCantidad).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</strong>
                   </span>
                   <span className="text-slate-400">|</span>
                   <span className={diferencia >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
-                    Diferencia: {diferencia >= 0 ? '+' : ''}{Number(diferencia).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    Diferencia: {diferencia >= 0 ? '+' : ''}{Number(diferencia).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   </span>
                 </div>
               </div>
@@ -268,13 +269,13 @@ export default function Ajustes() {
                         <td className="py-3 px-3 font-medium text-slate-800">{a.nombre || a.producto_nombre}</td>
                         <td className="py-3 px-3 font-mono text-slate-500 text-xs">{a.codigo || a.producto_codigo}</td>
                         <td className="py-3 px-3 text-right text-slate-500">
-                          {a.stock_anterior != null ? Number(a.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                          {a.stock_anterior != null ? Number(a.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                         </td>
                         <td className="py-3 px-3 text-right font-semibold text-slate-700">
-                          {a.stock_resultante != null ? Number(a.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                          {a.stock_resultante != null ? Number(a.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                         </td>
                         <td className={`py-3 px-3 text-right font-semibold ${diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {diff >= 0 ? '+' : ''}{Number(diff).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {diff >= 0 ? '+' : ''}{Number(diff).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </td>
                         <td className="py-3 px-3 text-slate-500 text-xs max-w-[200px]">
                           {a.notas || '—'}
@@ -311,7 +312,7 @@ export default function Ajustes() {
         onClose={() => setCancelItem(null)}
         onConfirm={handleCancelar}
         title="Cancelar ajuste"
-        message={cancelItem ? `¿Cancelar el ajuste de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior (${Number(cancelItem.stock_anterior ?? cancelItem.cantidad_anterior).toLocaleString('es-MX', { minimumFractionDigits: 2 })}).` : ''}
+        message={cancelItem ? `¿Cancelar el ajuste de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior (${Number(cancelItem.stock_anterior ?? cancelItem.cantidad_anterior).toLocaleString('es-MX', { minimumFractionDigits: 0 })}).` : ''}
         confirmText="Sí, cancelar"
         cancelText="No, mantener"
       />

@@ -15,16 +15,36 @@ import Historial from './pages/Historial'
 import Alertas from './pages/Alertas'
 import Reportes from './pages/Reportes'
 import Danados from './pages/Danados'
+import Auditoria from './pages/Auditoria'
+import Caja from './pages/Caja'
+import VentasAdmin from './pages/VentasAdmin'
 
-function AppRoutes() {
-  const { usuario } = useUser();
+// Redirige a la ruta home según el rol
+function HomeRedirect() {
+  const { rol } = useUser();
+  if (rol === 'caja') return <Navigate to="/caja" replace />;
+  return <Navigate to="/dashboard" replace />;
+}
 
-  if (!usuario) return <Login />;
-
+// Rutas para rol 'caja': solo ve la página de Caja (sin Layout)
+function CajaRoutes() {
   return (
     <Routes>
+      <Route path="*" element={<Caja />} />
+    </Routes>
+  );
+}
+
+// Rutas para rol 'almacen' y 'admin': inventario + extras para admin
+function InventarioRoutes() {
+  const { rol } = useUser();
+  return (
+    <Routes>
+      {/* Caja: full-screen, fuera del Layout (sin sidebar/header del inventario) */}
+      {rol === 'admin' && <Route path="/caja" element={<Caja />} />}
+
       <Route path="/" element={<Layout />}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<HomeRedirect />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="productos" element={<Productos />} />
         <Route path="categorias" element={<Categorias />} />
@@ -35,14 +55,27 @@ function AppRoutes() {
         <Route path="danados" element={<Danados />} />
         <Route path="alertas" element={<Alertas />} />
         <Route path="reportes" element={<Reportes />} />
+        <Route path="auditoria" element={<Auditoria />} />
+        {rol === 'admin' && <Route path="ventas" element={<VentasAdmin />} />}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>
   );
 }
 
+function AppRoutes() {
+  const { usuario, rol } = useUser();
+
+  if (!usuario) return <Login />;
+
+  if (rol === 'caja') return <CajaRoutes />;
+
+  return <InventarioRoutes />;
+}
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <UserProvider>
         <ToastProvider>
           <AlertProvider>

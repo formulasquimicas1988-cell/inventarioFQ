@@ -7,6 +7,7 @@ export function formatDate(dateStr) {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return '—';
     return d.toLocaleString('es-MX', {
+      timeZone: 'America/Tegucigalpa',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -22,8 +23,8 @@ export function formatDate(dateStr) {
 /**
  * Format a number with specified decimal places
  */
-export function formatNumber(n, decimals = 2) {
-  if (n === null || n === undefined || isNaN(n)) return '0.00';
+export function formatNumber(n, decimals = 0) {
+  if (n === null || n === undefined || isNaN(n)) return '0';
   return parseFloat(n).toLocaleString('es-MX', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,

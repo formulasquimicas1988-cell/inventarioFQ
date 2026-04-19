@@ -1,4 +1,5 @@
 const pool = require('../db');
+const { logAudit, getClientIp } = require('../lib/audit');
 
 // Helper: build paginated query
 async function paginated(baseQuery, countQuery, params, page, limit) {
@@ -16,6 +17,8 @@ const getHistorial = async (req, res) => {
     const { search, tipo, fecha_inicio, fecha_fin, page = 1, limit = 50 } = req.query;
     const params = [];
     let where = [];
+
+    where.push('m.cancelado = 0');
 
     if (tipo && tipo !== 'all') {
       where.push('m.tipo = ?');
@@ -64,7 +67,7 @@ const getEntradas = async (req, res) => {
   try {
     const { search, page = 1, limit = 50 } = req.query;
     const params = ['entrada'];
-    let where = ['m.tipo = ?'];
+    let where = ['m.tipo = ?', 'm.cancelado = 0'];
 
     if (search && search.trim()) {
       where.push('(p.nombre LIKE ? OR p.codigo LIKE ? OR m.proveedor LIKE ?)');
@@ -99,7 +102,7 @@ const getSalidas = async (req, res) => {
   try {
     const { search, page = 1, limit = 50 } = req.query;
     const params = ['salida'];
-    let where = ['m.tipo = ?'];
+    let where = ['m.tipo = ?', 'm.cancelado = 0'];
 
     if (search && search.trim()) {
       where.push('(p.nombre LIKE ? OR p.codigo LIKE ? OR m.cliente LIKE ?)');
@@ -134,7 +137,7 @@ const getAjustes = async (req, res) => {
   try {
     const { search, page = 1, limit = 50 } = req.query;
     const params = ['ajuste'];
-    let where = ['m.tipo = ?'];
+    let where = ['m.tipo = ?', 'm.cancelado = 0'];
 
     if (search && search.trim()) {
       where.push('(p.nombre LIKE ? OR p.codigo LIKE ?)');
@@ -173,14 +176,14 @@ const createEntrada = async (req, res) => {
     const { producto_id, cantidad, proveedor, notas, fecha, usuario } = req.body;
 
     if (!producto_id) return res.status(400).json({ error: 'El producto es requerido' });
-    const qty = parseFloat(cantidad);
+    const qty = parseInt(cantidad);
     if (!qty || qty <= 0) return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
 
     // Get current stock
     const [products] = await conn.query('SELECT id, stock_actual, nombre FROM productos WHERE id = ? AND activo = 1', [producto_id]);
     if (products.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const stockAnterior = parseFloat(products[0].stock_actual);
+    const stockAnterior = parseInt(products[0].stock_actual);
     const stockResultante = stockAnterior + qty;
 
     // Update stock
@@ -220,7 +223,7 @@ const createSalida = async (req, res) => {
     const { producto_id, cantidad, cliente, notas, fecha, usuario } = req.body;
 
     if (!producto_id) return res.status(400).json({ error: 'El producto es requerido' });
-    const qty = parseFloat(cantidad);
+    const qty = parseInt(cantidad);
     if (!qty || qty <= 0) return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
     if (!cliente || !cliente.trim()) return res.status(400).json({ error: 'El cliente es requerido' });
 
@@ -228,7 +231,7 @@ const createSalida = async (req, res) => {
     const [products] = await conn.query('SELECT id, stock_actual, nombre FROM productos WHERE id = ? AND activo = 1', [producto_id]);
     if (products.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const stockAnterior = parseFloat(products[0].stock_actual);
+    const stockAnterior = parseInt(products[0].stock_actual);
     if (qty > stockAnterior) {
       await conn.rollback();
       return res.status(400).json({
@@ -275,7 +278,7 @@ const createAjuste = async (req, res) => {
     const { producto_id, nueva_cantidad, notas, fecha, usuario } = req.body;
 
     if (!producto_id) return res.status(400).json({ error: 'El producto es requerido' });
-    const newQty = parseFloat(nueva_cantidad);
+    const newQty = parseInt(nueva_cantidad);
     if (newQty === undefined || newQty === null || isNaN(newQty) || newQty < 0) {
       return res.status(400).json({ error: 'La nueva cantidad debe ser mayor o igual a 0' });
     }
@@ -285,7 +288,7 @@ const createAjuste = async (req, res) => {
     const [products] = await conn.query('SELECT id, stock_actual FROM productos WHERE id = ? AND activo = 1', [producto_id]);
     if (products.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const stockAnterior = parseFloat(products[0].stock_actual);
+    const stockAnterior = parseInt(products[0].stock_actual);
     const diferencia = Math.abs(newQty - stockAnterior);
 
     // Update stock to new absolute value
@@ -321,7 +324,7 @@ const getDanados = async (req, res) => {
   try {
     const { search, page = 1, limit = 20 } = req.query;
     const params = ['danado'];
-    let where = ['m.tipo = ?'];
+    let where = ['m.tipo = ?', 'm.cancelado = 0'];
 
     if (search && search.trim()) {
       where.push('(p.nombre LIKE ? OR p.codigo LIKE ? OR m.notas LIKE ?)');
@@ -360,14 +363,14 @@ const createDanado = async (req, res) => {
     const { producto_id, cantidad, notas, fecha, usuario } = req.body;
 
     if (!producto_id) return res.status(400).json({ error: 'El producto es requerido' });
-    const qty = parseFloat(cantidad);
+    const qty = parseInt(cantidad);
     if (!qty || qty <= 0) return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
     if (!notas || !notas.trim()) return res.status(400).json({ error: 'El motivo del daño es requerido' });
 
     const [products] = await conn.query('SELECT id, stock_actual FROM productos WHERE id = ? AND activo = 1', [producto_id]);
     if (products.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const stockAnterior = parseFloat(products[0].stock_actual);
+    const stockAnterior = parseInt(products[0].stock_actual);
     if (qty > stockAnterior) {
       await conn.rollback();
       return res.status(400).json({
@@ -415,7 +418,13 @@ const cancelarMovimiento = async (req, res) => {
     }
 
     const mov = rows[0];
-    const stockAnterior = parseFloat(mov.cantidad_anterior);
+
+    if (mov.cancelado) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Este movimiento ya fue cancelado' });
+    }
+
+    const stockAnterior = parseInt(mov.cantidad_anterior);
 
     if (stockAnterior == null || isNaN(stockAnterior)) {
       await conn.rollback();
@@ -425,10 +434,15 @@ const cancelarMovimiento = async (req, res) => {
     // Restore stock to what it was before this movement
     await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockAnterior, mov.producto_id]);
 
-    // Delete the movement
-    await conn.query('DELETE FROM movimientos WHERE id = ?', [req.params.id]);
+    // Soft-delete: marcar como cancelado (no borrar)
+    await conn.query('UPDATE movimientos SET cancelado = 1, cancelado_en = NOW() WHERE id = ?', [req.params.id]);
 
     await conn.commit();
+
+    const ip = getClientIp(req);
+    const usuario = req.body?.usuario || req.query?.usuario || null;
+    await logAudit({ usuario, accion: 'canceló', modulo: 'Movimiento', detalle: `Canceló ${mov.tipo} ID ${mov.id} de producto ID ${mov.producto_id} (cantidad: ${mov.cantidad})`, ip });
+
     res.json({ message: 'Movimiento cancelado y stock restaurado correctamente' });
   } catch (err) {
     await conn.rollback();

@@ -148,10 +148,11 @@ export default function Entradas() {
               <input
                 type="number"
                 value={form.cantidad}
+                onKeyDown={(e) => { if (e.key === '.' || e.key === ',') e.preventDefault(); }}
                 onChange={(e) => setForm((f) => ({ ...f, cantidad: e.target.value }))}
-                min="0.01"
-                step="0.01"
-                placeholder="0.00"
+                min="1"
+                step="1"
+                placeholder="0"
                 required
                 className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
               />
@@ -239,14 +240,14 @@ export default function Entradas() {
                       <td className="py-3 px-3 font-medium text-slate-800">{e.nombre || e.producto_nombre}</td>
                       <td className="py-3 px-3 font-mono text-slate-500 text-xs">{e.codigo || e.producto_codigo}</td>
                       <td className="py-3 px-3 text-right font-semibold text-green-600">
-                        +{Number(e.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {e.unidad_medida}
+                        +{Number(e.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {e.unidad_medida}
                       </td>
                       <td className="py-3 px-3 text-slate-500">{e.proveedor || '—'}</td>
                       <td className="py-3 px-3 text-right text-slate-500">
-                        {e.stock_anterior != null ? Number(e.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        {e.stock_anterior != null ? Number(e.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                       </td>
                       <td className="py-3 px-3 text-right text-slate-700 font-medium">
-                        {e.stock_resultante != null ? Number(e.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        {e.stock_resultante != null ? Number(e.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                       </td>
                       <td className="py-3 px-3 text-slate-400 text-xs max-w-[150px] truncate">{e.notas || '—'}</td>
                       <td className="py-3 px-3">
@@ -280,7 +281,7 @@ export default function Entradas() {
         onClose={() => setCancelItem(null)}
         onConfirm={handleCancelar}
         title="Cancelar entrada"
-        message={cancelItem ? `¿Cancelar la entrada de ${Number(cancelItem.cantidad).toLocaleString('es-MX', { minimumFractionDigits: 2 })} ${cancelItem.unidad_medida} de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior.` : ''}
+        message={cancelItem ? `¿Cancelar la entrada de ${Number(cancelItem.cantidad).toLocaleString('es-MX', { minimumFractionDigits: 0 })} ${cancelItem.unidad_medida} de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior.` : ''}
         confirmText="Sí, cancelar"
         cancelText="No, mantener"
       />

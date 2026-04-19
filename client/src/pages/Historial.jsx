@@ -211,14 +211,14 @@ export default function Historial() {
                       <td className="py-3 px-3 font-mono text-slate-500 text-xs whitespace-nowrap">{m.codigo || m.producto_codigo || '—'}</td>
                       <td className="py-3 px-3 font-medium text-slate-800 whitespace-nowrap">{m.nombre || m.producto_nombre || '—'}</td>
                       <td className="py-3 px-3 text-right font-semibold text-slate-700 whitespace-nowrap">
-                        {Number(m.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {Number(m.cantidad || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-3 px-3 text-slate-500 whitespace-nowrap">{m.unidad_medida || '—'}</td>
                       <td className="py-3 px-3 text-right text-slate-500 whitespace-nowrap">
-                        {m.stock_anterior != null ? Number(m.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        {m.stock_anterior != null ? Number(m.stock_anterior).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                       </td>
                       <td className="py-3 px-3 text-right text-slate-700 font-medium whitespace-nowrap">
-                        {m.stock_resultante != null ? Number(m.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        {m.stock_resultante != null ? Number(m.stock_resultante).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '—'}
                       </td>
                       <td className="py-3 px-3 text-slate-500 text-xs">{m.cliente || '—'}</td>
                       <td className="py-3 px-3 text-slate-500 text-xs">{m.proveedor || '—'}</td>

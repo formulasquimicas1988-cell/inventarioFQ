@@ -1,4 +1,5 @@
 const pool = require('../db');
+const { logAudit, getClientIp } = require('../lib/audit');
 
 // GET /api/categorias
 const getAll = async (req, res) => {
@@ -36,6 +37,10 @@ const create = async (req, res) => {
       'SELECT c.*, 0 AS total_productos FROM categorias c WHERE c.id = ?',
       [result.insertId]
     );
+    const ip = getClientIp(req);
+    const { usuario } = req.body;
+    await logAudit({ usuario, accion: 'creó', modulo: 'Categoría', detalle: `Creó categoría "${nombre.trim()}"`, ip });
+
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('create categoria error:', err);
@@ -65,6 +70,10 @@ const update = async (req, res) => {
       WHERE c.id = ?
       GROUP BY c.id
     `, [id]);
+    const ip = getClientIp(req);
+    const { usuario } = req.body;
+    await logAudit({ usuario, accion: 'editó', modulo: 'Categoría', detalle: `Editó categoría ID ${id} → "${nombre.trim()}"`, ip });
+
     res.json(rows[0]);
   } catch (err) {
     console.error('update categoria error:', err);
@@ -90,6 +99,10 @@ const remove = async (req, res) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Categoría no encontrada' });
     }
+    const ip = getClientIp(req);
+    const usuario = req.body?.usuario || req.query?.usuario || null;
+    await logAudit({ usuario, accion: 'eliminó', modulo: 'Categoría', detalle: `Eliminó categoría ID ${id}`, ip });
+
     res.json({ message: 'Categoría eliminada correctamente' });
   } catch (err) {
     console.error('remove categoria error:', err);

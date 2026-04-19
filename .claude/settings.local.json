@@ -1,7 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -n \"data?.movimientos\\\\|data?.entradas\\\\|data?.salidas\\\\|data?.ajustes\\\\|data?.categorias\" /c/inventarioFQ/client/src/pages/*.jsx)"
+      "Bash(grep -n \"data?.movimientos\\\\|data?.entradas\\\\|data?.salidas\\\\|data?.ajustes\\\\|data?.categorias\" /c/inventarioFQ/client/src/pages/*.jsx)",
+      "Bash(npm install:*)",
+      "Bash(dir \"C:\\\\inventarioFQ\" /b)",
+      "Read(//mnt/c/inventarioFQ/**)",
+      "Bash(node seedUsuarios.js)",
+      "Bash(\"C:\\\\xampp\\\\mysql\\\\bin\\\\mysql.exe\" -u root -e \"ALTER TABLE productos ADD COLUMN es_grupo TINYINT\\(1\\) NOT NULL DEFAULT 0 AFTER descripcion_editable;\" formulasquimicas)",
+      "Bash(\"C:\\\\xampp\\\\mysql\\\\bin\\\\mysql.exe\" -u root -e \"SHOW COLUMNS FROM productos LIKE ''es_grupo'';\" formulasquimicas)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d \"{\"\"nombre\"\":\"\"test\"\",\"\"password\"\":\"\"test\"\"}\")",
+      "Bash(curl -s -X POST http://localhost:5200/api/auth/login -H \"Content-Type: application/json\" -d \"{\"\"nombre\"\":\"\"test\"\",\"\"password\"\":\"\"test\"\"}\")",
+      "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"ALTER TABLE movimientos ADD COLUMN cancelado TINYINT\\(1\\) NOT NULL DEFAULT 0, ADD COLUMN cancelado_en DATETIME NULL;\")",
+      "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"ALTER TABLE productos ADD COLUMN categoria_id_2 INT DEFAULT NULL, ADD CONSTRAINT fk_productos_categoria2 FOREIGN KEY \\(categoria_id_2\\) REFERENCES categorias\\(id\\) ON DELETE SET NULL;\")",
+      "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"ALTER TABLE ventas AUTO_INCREMENT = 1079;\")",
+      "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = ''formulasquimicas'' AND TABLE_NAME = ''ventas'';\")"
     ]
   }
 }

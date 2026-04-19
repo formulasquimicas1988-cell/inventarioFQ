@@ -2,11 +2,13 @@ import React, { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Tag, ArrowDownCircle, ArrowUpCircle,
-  SlidersHorizontal, History, Bell, FileBarChart2, ChevronLeft, ChevronRight, PackageX
+  SlidersHorizontal, History, Bell, FileBarChart2, ChevronLeft, ChevronRight,
+  PackageX, ShieldCheck, ShoppingCart, ClipboardList
 } from 'lucide-react'
 import { useAlerts } from '../context/AlertContext'
+import { useUser } from '../context/UserContext'
 
-const NAV_ITEMS = [
+const INVENTARIO_ITEMS = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/productos', label: 'Productos', icon: Package },
   { path: '/categorias', label: 'Categorías', icon: Tag },
@@ -17,6 +19,12 @@ const NAV_ITEMS = [
   { path: '/danados', label: 'Dañados', icon: PackageX },
   { path: '/alertas', label: 'Alertas', icon: Bell, hasAlert: true },
   { path: '/reportes', label: 'Reportes', icon: FileBarChart2 },
+  { path: '/auditoria', label: 'Auditoría', icon: ShieldCheck, adminOnly: true },
+]
+
+const ADMIN_EXTRAS = [
+  { path: '/caja', label: 'Caja', icon: ShoppingCart },
+  { path: '/ventas', label: 'Ventas', icon: ClipboardList },
 ]
 
 export default function Sidebar({ mobileOpen, onMobileClose }) {
@@ -24,6 +32,11 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
     return localStorage.getItem('sidebar_collapsed') === 'true'
   })
   const { criticosCount } = useAlerts()
+  const { rol } = useUser()
+
+  const navItems = rol === 'admin'
+    ? [...INVENTARIO_ITEMS, ...ADMIN_EXTRAS]
+    : INVENTARIO_ITEMS.filter(item => !item.adminOnly)
 
   const toggle = () => {
     setCollapsed(prev => {
@@ -61,7 +74,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 space-y-0.5">
-        {NAV_ITEMS.map(({ path, label, icon: Icon, hasAlert }) => (
+        {navItems.map(({ path, label, icon: Icon, hasAlert }) => (
           <NavLink
             key={path}
             to={path}

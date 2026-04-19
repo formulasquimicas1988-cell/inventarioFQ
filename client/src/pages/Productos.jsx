@@ -26,10 +26,21 @@ const emptyForm = {
   codigo: '',
   nombre: '',
   categoria_id: '',
+  categoria_id_2: '',
   stock_actual: '',
   stock_minimo: '',
   unidad_medida: 'Litros',
   unidad_custom: '',
+  // Campos de caja
+  precio_a: '',
+  precio_b: '',
+  precio_c: '',
+  precio_d: '',
+  favorito: false,
+  sin_inventario: false,
+  descripcion_editable: false,
+  es_grupo: false,
+  producto_base_id: '',
 };
 
 export default function Productos() {
@@ -48,6 +59,7 @@ export default function Productos() {
   const [editItem, setEditItem] = useState(null);
   const [deleteItem, setDeleteItem] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [todosProductos, setTodosProductos] = useState([]); // para select de producto_base_id
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -97,23 +109,44 @@ export default function Productos() {
     fetchProductos(search, categoriaFilter, page);
   }, [page]);
 
+  const cargarTodosProductos = async () => {
+    try {
+      const res = await api.get('/api/productos', { params: { limit: 1000, activo: 1 } });
+      const data = res.data;
+      setTodosProductos(Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []));
+    } catch {}
+  };
+
   const openCreate = () => {
     setEditItem(null);
     setForm(emptyForm);
+    cargarTodosProductos();
     setShowModal(true);
   };
 
   const openEdit = (p) => {
     setEditItem(p);
+    cargarTodosProductos();
     const isCustom = !UNIDADES.includes(p.unidad_medida);
     setForm({
       codigo: p.codigo || '',
       nombre: p.nombre || '',
       categoria_id: p.categoria_id || '',
+      categoria_id_2: p.categoria_id_2 || '',
       stock_actual: '',
       stock_minimo: p.stock_minimo != null ? String(p.stock_minimo) : '',
       unidad_medida: isCustom ? '__custom__' : (p.unidad_medida || 'Litros'),
       unidad_custom: isCustom ? (p.unidad_medida || '') : '',
+      // Campos de caja
+      precio_a: p.precio_a != null ? String(p.precio_a) : '',
+      precio_b: p.precio_b != null ? String(p.precio_b) : '',
+      precio_c: p.precio_c != null ? String(p.precio_c) : '',
+      precio_d: p.precio_d != null ? String(p.precio_d) : '',
+      favorito: !!p.favorito,
+      sin_inventario: !!p.sin_inventario,
+      descripcion_editable: !!p.descripcion_editable,
+      es_grupo: !!p.es_grupo,
+      producto_base_id: p.producto_base_id || '',
     });
     setShowModal(true);
   };
@@ -147,8 +180,19 @@ export default function Productos() {
       codigo: form.codigo.trim(),
       nombre: form.nombre.trim(),
       categoria_id: form.categoria_id || null,
+      categoria_id_2: form.categoria_id_2 || null,
       stock_minimo: form.stock_minimo !== '' ? parseFloat(form.stock_minimo) : 0,
       unidad_medida: unidad,
+      // Campos de caja
+      precio_a: form.precio_a !== '' ? parseFloat(form.precio_a) : null,
+      precio_b: form.precio_b !== '' ? parseFloat(form.precio_b) : null,
+      precio_c: form.precio_c !== '' ? parseFloat(form.precio_c) : null,
+      precio_d: form.precio_d !== '' ? parseFloat(form.precio_d) : null,
+      favorito: form.favorito ? 1 : 0,
+      sin_inventario: form.sin_inventario ? 1 : 0,
+      descripcion_editable: form.descripcion_editable ? 1 : 0,
+      es_grupo: form.es_grupo ? 1 : 0,
+      producto_base_id: form.producto_base_id || null,
     };
     if (!editItem) {
       payload.stock_actual = form.stock_actual !== '' ? parseFloat(form.stock_actual) : 0;
@@ -166,7 +210,7 @@ export default function Productos() {
       handleCloseModal();
       fetchProductos(search, categoriaFilter, page);
     } catch (err) {
-      error(err?.response?.data?.message || 'Error al guardar el producto');
+      error(err?.response?.data?.error || err?.response?.data?.message || 'Error al guardar el producto');
     } finally {
       setSaving(false);
     }
@@ -180,7 +224,7 @@ export default function Productos() {
       setDeleteItem(null);
       fetchProductos(search, categoriaFilter, page);
     } catch (err) {
-      error(err?.response?.data?.message || 'Error al eliminar el producto');
+      error(err?.response?.data?.error || err?.response?.data?.message || 'Error al eliminar el producto');
     }
   };
 
@@ -278,7 +322,8 @@ export default function Productos() {
                     {[
                       { key: 'codigo', label: 'Código', align: 'left' },
                       { key: 'nombre', label: 'Nombre', align: 'left' },
-                      { key: 'categoria_nombre', label: 'Categoría', align: 'left' },
+                      { key: 'categoria_nombre', label: 'Categoría 1', align: 'left' },
+                      { key: 'categoria_nombre_2', label: 'Categoría 2', align: 'left' },
                       { key: 'stock_actual', label: 'Stock Actual', align: 'right' },
                       { key: 'stock_minimo', label: 'Stock Mín.', align: 'right' },
                       { key: 'unidad_medida', label: 'Unidad', align: 'left' },
@@ -306,11 +351,12 @@ export default function Productos() {
                       <td className="py-3 px-3 font-mono text-slate-600 text-xs">{p.codigo}</td>
                       <td className="py-3 px-3 font-medium text-slate-800">{p.nombre}</td>
                       <td className="py-3 px-3 text-slate-500">{p.categoria_nombre || '—'}</td>
+                      <td className="py-3 px-3 text-slate-500">{p.categoria_nombre_2 || '—'}</td>
                       <td className="py-3 px-3 text-right font-semibold text-slate-700">
-                        {Number(p.stock_actual || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {Number(p.stock_actual || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-3 px-3 text-right text-slate-500">
-                        {Number(p.stock_minimo || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {Number(p.stock_minimo || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-3 px-3 text-slate-500">{p.unidad_medida}</td>
                       <td className="py-3 px-3">
@@ -391,7 +437,7 @@ export default function Productos() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Categoría</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Categoría 1</label>
               <select
                 value={form.categoria_id}
                 onChange={(e) => setForm((f) => ({ ...f, categoria_id: e.target.value }))}
@@ -403,6 +449,22 @@ export default function Productos() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Categoría 2</label>
+              <select
+                value={form.categoria_id_2}
+                onChange={(e) => setForm((f) => ({ ...f, categoria_id_2: e.target.value }))}
+                className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red bg-white"
+              >
+                <option value="">Sin segunda categoría</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Unidad de Medida</label>
               <select
@@ -438,10 +500,11 @@ export default function Productos() {
                 <input
                   type="number"
                   value={form.stock_actual}
+                  onKeyDown={(e) => { if (e.key === '.' || e.key === ',') e.preventDefault(); }}
                   onChange={(e) => setForm((f) => ({ ...f, stock_actual: e.target.value }))}
                   min="0"
-                  step="0.01"
-                  placeholder="0.00"
+                  step="1"
+                  placeholder="0"
                   className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
                 />
               </div>
@@ -451,12 +514,80 @@ export default function Productos() {
               <input
                 type="number"
                 value={form.stock_minimo}
+                onKeyDown={(e) => { if (e.key === '.' || e.key === ',') e.preventDefault(); }}
                 onChange={(e) => setForm((f) => ({ ...f, stock_minimo: e.target.value }))}
                 min="0"
-                step="0.01"
-                placeholder="0.00"
+                step="1"
+                placeholder="0"
                 className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
               />
+            </div>
+          </div>
+
+          {/* ── Sección de precios para la caja ── */}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Precios de Caja (opcionales)</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { key: 'precio_a', label: 'Precio A' },
+                { key: 'precio_b', label: 'Precio B' },
+                { key: 'precio_c', label: 'Precio C' },
+                { key: 'precio_d', label: 'Precio D' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+                  <input
+                    type="number"
+                    value={form[key]}
+                    onChange={(e) => setForm(f => ({ ...f, [key]: e.target.value }))}
+                    min="0" step="0.01" placeholder="—"
+                    className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Flags de caja ── */}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Opciones de Caja</p>
+            <div className="flex flex-wrap gap-4">
+              {[
+                { key: 'favorito', label: 'Favorito (acceso rápido)' },
+                { key: 'sin_inventario', label: 'Sin inventario (no descuenta stock)' },
+                { key: 'descripcion_editable', label: 'Descripción editable al vender' },
+                { key: 'es_grupo', label: 'Agrupar variantes por primera palabra en caja' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form[key]}
+                    onChange={(e) => setForm(f => ({ ...f, [key]: e.target.checked }))}
+                    className="w-4 h-4 accent-brand-red"
+                  />
+                  <span className="text-sm text-slate-700">{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Producto base (alias — comparte stock con)
+              </label>
+              <select
+                value={form.producto_base_id}
+                onChange={(e) => setForm(f => ({ ...f, producto_base_id: e.target.value }))}
+                className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red bg-white"
+              >
+                <option value="">— Este producto es su propio stock —</option>
+                {todosProductos
+                  .filter(p => !editItem || p.id !== editItem.id)
+                  .map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre} ({p.codigo})</option>
+                  ))}
+              </select>
+              <p className="text-xs text-slate-400 mt-1">
+                Si este producto es un alias (ej. nombre alternativo), selecciona aquí el producto cuyo stock se debe descontar al vender este.
+              </p>
             </div>
           </div>
 

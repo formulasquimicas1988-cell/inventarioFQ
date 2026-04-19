@@ -1,21 +1,12 @@
 -- =====================================================
 -- Sistema de Inventario + Caja — Fórmulas Químicas
--- Schema MySQL (instalación limpia)
+-- Schema MySQL (migración segura — NO borra datos)
 -- =====================================================
-
-DROP TABLE IF EXISTS detalle_ventas;
-DROP TABLE IF EXISTS ventas;
-DROP TABLE IF EXISTS movimientos;
-DROP TABLE IF EXISTS productos;
-DROP TABLE IF EXISTS categorias;
-DROP TABLE IF EXISTS auditoria;
-DROP TABLE IF EXISTS accesos;
-DROP TABLE IF EXISTS usuarios;
 
 -- =====================================================
 -- TABLA: categorias
 -- =====================================================
-CREATE TABLE categorias (
+CREATE TABLE IF NOT EXISTS categorias (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(100) NOT NULL,
   creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -24,7 +15,7 @@ CREATE TABLE categorias (
 -- =====================================================
 -- TABLA: usuarios
 -- =====================================================
-CREATE TABLE usuarios (
+CREATE TABLE IF NOT EXISTS usuarios (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(100) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
@@ -36,7 +27,7 @@ CREATE TABLE usuarios (
 -- =====================================================
 -- TABLA: productos
 -- =====================================================
-CREATE TABLE productos (
+CREATE TABLE IF NOT EXISTS productos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   codigo VARCHAR(50) UNIQUE NOT NULL,
   nombre VARCHAR(200) NOT NULL,
@@ -44,17 +35,14 @@ CREATE TABLE productos (
   stock_actual INT DEFAULT 0,
   stock_minimo INT DEFAULT 0,
   unidad_medida VARCHAR(50) NOT NULL,
-  -- Precios para la caja (4 niveles)
   precio_a DECIMAL(10,2) DEFAULT NULL,
   precio_b DECIMAL(10,2) DEFAULT NULL,
   precio_c DECIMAL(10,2) DEFAULT NULL,
   precio_d DECIMAL(10,2) DEFAULT NULL,
-  -- Flags para la caja
   favorito TINYINT(1) DEFAULT 0,
   sin_inventario TINYINT(1) DEFAULT 0,
   descripcion_editable TINYINT(1) DEFAULT 0,
   es_grupo TINYINT(1) DEFAULT 0,
-  -- Alias: si este producto comparte stock con otro
   producto_base_id INT DEFAULT NULL,
   activo TINYINT(1) DEFAULT 1,
   creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -65,8 +53,9 @@ CREATE TABLE productos (
 -- =====================================================
 -- TABLA: ventas
 -- =====================================================
-CREATE TABLE ventas (
+CREATE TABLE IF NOT EXISTS ventas (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  numero_ticket INT NOT NULL DEFAULT 1,
   usuario_id INT NOT NULL,
   nombre_cliente VARCHAR(200) DEFAULT NULL,
   total DECIMAL(10,2) NOT NULL,
@@ -82,7 +71,7 @@ CREATE TABLE ventas (
 -- =====================================================
 -- TABLA: movimientos
 -- =====================================================
-CREATE TABLE movimientos (
+CREATE TABLE IF NOT EXISTS movimientos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   producto_id INT NOT NULL,
   tipo ENUM('entrada','salida','ajuste','danado') NOT NULL,
@@ -94,6 +83,8 @@ CREATE TABLE movimientos (
   notas TEXT,
   usuario VARCHAR(100) NULL,
   venta_id INT DEFAULT NULL,
+  cancelado TINYINT(1) NOT NULL DEFAULT 0,
+  cancelado_en DATETIME NULL,
   fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE,
@@ -103,7 +94,7 @@ CREATE TABLE movimientos (
 -- =====================================================
 -- TABLA: detalle_ventas
 -- =====================================================
-CREATE TABLE detalle_ventas (
+CREATE TABLE IF NOT EXISTS detalle_ventas (
   id INT AUTO_INCREMENT PRIMARY KEY,
   venta_id INT NOT NULL,
   producto_id INT DEFAULT NULL,
@@ -120,7 +111,7 @@ CREATE TABLE detalle_ventas (
 -- =====================================================
 -- TABLA: accesos (log de logins)
 -- =====================================================
-CREATE TABLE accesos (
+CREATE TABLE IF NOT EXISTS accesos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   usuario VARCHAR(100) NOT NULL,
   ip VARCHAR(45),
@@ -130,7 +121,7 @@ CREATE TABLE accesos (
 -- =====================================================
 -- TABLA: auditoria (log de acciones)
 -- =====================================================
-CREATE TABLE auditoria (
+CREATE TABLE IF NOT EXISTS auditoria (
   id INT AUTO_INCREMENT PRIMARY KEY,
   usuario VARCHAR(100),
   accion VARCHAR(50) NOT NULL,
@@ -139,3 +130,25 @@ CREATE TABLE auditoria (
   ip VARCHAR(45),
   fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- =====================================================
+-- COLUMNAS ADICIONALES
+-- Nota: Si alguna columna ya existe, dará error
+-- "Duplicate column name" — puedes ignorarlo,
+-- significa que ya estaba y no se necesitaba agregar.
+-- =====================================================
+ALTER TABLE productos ADD COLUMN categoria_id_2 INT DEFAULT NULL;
+ALTER TABLE productos ADD COLUMN es_grupo TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE productos ADD COLUMN precio_a DECIMAL(10,2) DEFAULT NULL;
+ALTER TABLE productos ADD COLUMN precio_b DECIMAL(10,2) DEFAULT NULL;
+ALTER TABLE productos ADD COLUMN precio_c DECIMAL(10,2) DEFAULT NULL;
+ALTER TABLE productos ADD COLUMN precio_d DECIMAL(10,2) DEFAULT NULL;
+ALTER TABLE productos ADD COLUMN favorito TINYINT(1) DEFAULT 0;
+ALTER TABLE productos ADD COLUMN sin_inventario TINYINT(1) DEFAULT 0;
+ALTER TABLE productos ADD COLUMN descripcion_editable TINYINT(1) DEFAULT 0;
+ALTER TABLE productos ADD COLUMN producto_base_id INT DEFAULT NULL;
+ALTER TABLE usuarios ADD COLUMN rol ENUM('admin','caja','almacen') NOT NULL DEFAULT 'almacen';
+ALTER TABLE movimientos ADD COLUMN venta_id INT DEFAULT NULL;
+ALTER TABLE movimientos ADD COLUMN cancelado TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE movimientos ADD COLUMN cancelado_en DATETIME NULL;
+ALTER TABLE ventas ADD COLUMN numero_ticket INT NOT NULL DEFAULT 1;
