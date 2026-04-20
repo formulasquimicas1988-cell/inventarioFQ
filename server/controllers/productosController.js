@@ -1,6 +1,7 @@
 const pool = require('../db');
 const XLSX = require('xlsx');
 const { logAudit, getClientIp } = require('../lib/audit');
+const { nowHN } = require('../lib/timeUtils');
 
 // GET /api/productos
 const getAll = async (req, res) => {
@@ -127,9 +128,9 @@ const create = async (req, res) => {
     const ip = getClientIp(req);
 
     await pool.query(
-      `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, notas, usuario)
-       VALUES (?, 'entrada', ?, 0, 'Stock inicial', ?)`,
-      [productoId, stockInicial, usuario || null]
+      `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, notas, usuario, fecha)
+       VALUES (?, 'entrada', ?, 0, 'Stock inicial', ?, ?)`,
+      [productoId, stockInicial, usuario || null, nowHN()]
     );
 
     await logAudit({ usuario, accion: 'creó', modulo: 'Producto', detalle: `Creó producto "${nombre.trim()}" (${codigo.trim()}) con stock inicial ${stockInicial}`, ip });
