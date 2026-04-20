@@ -77,13 +77,30 @@ const getEntradas = async (req, res) => {
     }
 
     const whereClause = 'WHERE ' + where.join(' AND ');
-    const baseQuery = `
-      SELECT m.*, m.cantidad_anterior AS stock_anterior, p.nombre AS producto_nombre, p.codigo AS producto_codigo, p.unidad_medida
-      FROM movimientos m
-      JOIN productos p ON m.producto_id = p.id
-      ${whereClause}
-      ORDER BY m.fecha DESC, m.id DESC
-    `;
+  const baseQuery = `
+  SELECT 
+    m.id,
+    m.producto_id,
+    m.tipo,
+    m.cantidad,
+    m.cantidad_anterior,
+    m.stock_resultante,
+    m.proveedor,
+    m.cliente,
+    m.notas,
+    m.usuario,
+    m.cancelado,
+    m.cancelado_en,
+    DATE_FORMAT(m.fecha, '%Y-%m-%d %H:%i:%s') AS fecha,
+    m.cantidad_anterior AS stock_anterior,
+    p.nombre AS producto_nombre,
+    p.codigo AS producto_codigo,
+    p.unidad_medida
+  FROM movimientos m
+  JOIN productos p ON m.producto_id = p.id
+  ${whereClause}
+  ORDER BY m.fecha DESC, m.id DESC
+`;
     const countQuery = `
       SELECT COUNT(*) AS total FROM movimientos m
       JOIN productos p ON m.producto_id = p.id
