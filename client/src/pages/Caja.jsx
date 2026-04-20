@@ -1013,7 +1013,7 @@ export default function Caja() {
       setNombreCliente('');
       setEfectivo('');
       cargarProductos(true); // refrescar stock en tiempo real
-      refrescarTicketNum();   // sincronizar número de ticket con el servidor
+      setTicketNum(res.data.numero_ticket + 1); // usar número real devuelto por el servidor
       imprimirTicket(ticketData);
     } catch (err) {
       setErrorCobro(err.message || 'Error al cobrar la venta');
