@@ -12,7 +12,8 @@ const pool = require('../db');
 async function logAudit({ usuario, accion, modulo, detalle, ip }) {
   try {
     await pool.query(
-      'INSERT INTO auditoria (usuario, accion, modulo, detalle, ip) VALUES (?, ?, ?, ?, ?)',
+      `INSERT INTO auditoria (usuario, accion, modulo, detalle, ip, fecha)
+       VALUES (?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
       [usuario || 'Sistema', accion, modulo, detalle || null, ip || null]
     );
   } catch (err) {
