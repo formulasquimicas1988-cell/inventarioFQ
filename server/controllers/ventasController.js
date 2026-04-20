@@ -121,13 +121,13 @@ const cobrarVenta = async (req, res) => {
     if (numeroTicket !== null) {
       [ventaResult] = await conn.query(
         `INSERT INTO ventas (numero_ticket, usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
-         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
         [numeroTicket, usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio]
       );
     } else {
       [ventaResult] = await conn.query(
         `INSERT INTO ventas (usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
-         VALUES (?, ?, ?, ?, ?, NOW())`,
+         VALUES (?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
         [usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio]
       );
     }
@@ -194,7 +194,7 @@ const cobrarVenta = async (req, res) => {
         await conn.query(
           `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante,
             cliente, notas, usuario, venta_id, fecha)
-           VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, NOW())`,
+           VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
           [
             stockProductId,
             qty,
@@ -372,7 +372,7 @@ const editarDetalle = async (req, res) => {
           await conn.query(
             `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante,
               cliente, notas, usuario, venta_id, fecha)
-             VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, NOW())`,
+             VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
             [
               newBaseId, qty, stockAnterior, stockResultante,
               ventas[0].nombre_cliente || 'Venta directa',

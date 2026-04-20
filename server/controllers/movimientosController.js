@@ -190,11 +190,15 @@ const createEntrada = async (req, res) => {
     await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, producto_id]);
 
     // Insert movement
-    const fechaMovimiento = fecha ? new Date(fecha) : new Date();
     const [result] = await conn.query(
-      `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, proveedor, notas, usuario, fecha)
-       VALUES (?, 'entrada', ?, ?, ?, ?, ?, ?, ?)`,
-      [producto_id, qty, stockAnterior, stockResultante, proveedor || null, notas || null, usuario || null, fechaMovimiento]
+      fecha
+        ? `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, proveedor, notas, usuario, fecha)
+           VALUES (?, 'entrada', ?, ?, ?, ?, ?, ?, ?)`
+        : `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, proveedor, notas, usuario, fecha)
+           VALUES (?, 'entrada', ?, ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
+      fecha
+        ? [producto_id, qty, stockAnterior, stockResultante, proveedor || null, notas || null, usuario || null, new Date(fecha)]
+        : [producto_id, qty, stockAnterior, stockResultante, proveedor || null, notas || null, usuario || null]
     );
 
     await conn.commit();
@@ -245,11 +249,15 @@ const createSalida = async (req, res) => {
     await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, producto_id]);
 
     // Insert movement
-    const fechaMovimiento = fecha ? new Date(fecha) : new Date();
     const [result] = await conn.query(
-      `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, cliente, notas, usuario, fecha)
-       VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?)`,
-      [producto_id, qty, stockAnterior, stockResultante, cliente.trim(), notas || null, usuario || null, fechaMovimiento]
+      fecha
+        ? `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, cliente, notas, usuario, fecha)
+           VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?)`
+        : `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, cliente, notas, usuario, fecha)
+           VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
+      fecha
+        ? [producto_id, qty, stockAnterior, stockResultante, cliente.trim(), notas || null, usuario || null, new Date(fecha)]
+        : [producto_id, qty, stockAnterior, stockResultante, cliente.trim(), notas || null, usuario || null]
     );
 
     await conn.commit();
@@ -295,11 +303,15 @@ const createAjuste = async (req, res) => {
     await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [newQty, producto_id]);
 
     // Insert movement
-    const fechaMovimiento = fecha ? new Date(fecha) : new Date();
     const [result] = await conn.query(
-      `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
-       VALUES (?, 'ajuste', ?, ?, ?, ?, ?, ?)`,
-      [producto_id, diferencia, stockAnterior, newQty, notas.trim(), usuario || null, fechaMovimiento]
+      fecha
+        ? `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
+           VALUES (?, 'ajuste', ?, ?, ?, ?, ?, ?)`
+        : `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
+           VALUES (?, 'ajuste', ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
+      fecha
+        ? [producto_id, diferencia, stockAnterior, newQty, notas.trim(), usuario || null, new Date(fecha)]
+        : [producto_id, diferencia, stockAnterior, newQty, notas.trim(), usuario || null]
     );
 
     await conn.commit();
@@ -381,11 +393,15 @@ const createDanado = async (req, res) => {
     const stockResultante = stockAnterior - qty;
     await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, producto_id]);
 
-    const fechaMovimiento = fecha ? new Date(fecha) : new Date();
     const [result] = await conn.query(
-      `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
-       VALUES (?, 'danado', ?, ?, ?, ?, ?, ?)`,
-      [producto_id, qty, stockAnterior, stockResultante, notas.trim(), usuario || null, fechaMovimiento]
+      fecha
+        ? `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
+           VALUES (?, 'danado', ?, ?, ?, ?, ?, ?)`
+        : `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
+           VALUES (?, 'danado', ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
+      fecha
+        ? [producto_id, qty, stockAnterior, stockResultante, notas.trim(), usuario || null, new Date(fecha)]
+        : [producto_id, qty, stockAnterior, stockResultante, notas.trim(), usuario || null]
     );
 
     await conn.commit();
