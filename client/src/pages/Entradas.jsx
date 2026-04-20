@@ -102,13 +102,14 @@ export default function Entradas() {
     }
     setSaving(true);
     try {
-      await api.post('/api/movimientos/entrada', {
-        producto_id: form.producto.id,
-        cantidad: parseFloat(form.cantidad),
-        proveedor: form.proveedor || '',
-        notas: form.notas || '',
-        usuario,
-      });
+  await api.post('/api/movimientos/entrada', {
+  producto_id: form.producto.id,
+  cantidad: parseFloat(form.cantidad),
+  proveedor: form.proveedor || '',
+  fecha: form.fecha ? form.fecha.replace('T', ' ') + ':00' : null,
+  notas: form.notas || '',
+  usuario,
+});
       success('Entrada registrada correctamente');
       setForm(emptyForm());
       setPage(1);
@@ -235,7 +236,8 @@ export default function Entradas() {
                 <tbody>
                   {entradas.map((e) => (
                     <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50" style={{ minHeight: '56px' }}>
-                      <td className="py-3 px-3 text-slate-600 whitespace-nowrap">{formatDate(e.fecha)}</td>
+           <td className="py-3 px-3 text-slate-600 whitespace-nowrap">{e.fecha}</td>
+                      
                       <td className="py-3 px-3 font-medium text-slate-800">{e.nombre || e.producto_nombre}</td>
                       <td className="py-3 px-3 font-mono text-slate-500 text-xs">{e.codigo || e.producto_codigo}</td>
                       <td className="py-3 px-3 text-right font-semibold text-green-600">
