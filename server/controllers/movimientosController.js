@@ -191,6 +191,9 @@ const createEntrada = async (req, res) => {
     await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, producto_id]);
 
     // Insert movement
+    console.log('TZ:', process.env.TZ);
+console.log('Hora nowHN:', nowHN());
+console.log('Fecha normal JS:', new Date());
     const [result] = await conn.query(
       `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, proveedor, notas, usuario, fecha)
        VALUES (?, 'entrada', ?, ?, ?, ?, ?, ?, ?)`,
