@@ -106,7 +106,6 @@ export default function Entradas() {
         producto_id: form.producto.id,
         cantidad: parseFloat(form.cantidad),
         proveedor: form.proveedor || '',
-        fecha: form.fecha || getNowDatetimeLocal(),
         notas: form.notas || '',
         usuario,
       });

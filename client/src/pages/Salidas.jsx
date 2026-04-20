@@ -140,7 +140,6 @@ export default function Salidas() {
           producto_id: item.producto.id,
           cantidad: parseFloat(item.cantidad),
           cliente: form.cliente.trim(),
-          fecha: form.fecha || getNowDatetimeLocal(),
           notas: form.notas || '',
           usuario,
         });

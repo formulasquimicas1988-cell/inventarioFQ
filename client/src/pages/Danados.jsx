@@ -94,7 +94,6 @@ export default function Danados() {
         producto_id: form.producto.id,
         cantidad: parseFloat(form.cantidad),
         notas: form.notas.trim(),
-        fecha: form.fecha || getNowDatetimeLocal(),
         usuario,
       });
       success('Producto dañado registrado correctamente');

@@ -109,7 +109,6 @@ export default function Ajustes() {
         producto_id: form.producto.id,
         nueva_cantidad: parseFloat(form.nueva_cantidad),
         notas: form.notas.trim(),
-        fecha: form.fecha || getNowDatetimeLocal(),
         usuario,
       });
       success('Ajuste registrado correctamente');
