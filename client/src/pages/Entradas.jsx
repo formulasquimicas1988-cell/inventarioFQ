@@ -102,11 +102,11 @@ export default function Entradas() {
     }
     setSaving(true);
     try {
-     await api.post('/api/movimientos/entrada', {
+  await api.post('/api/movimientos/entrada', {
   producto_id: form.producto.id,
   cantidad: parseFloat(form.cantidad),
   proveedor: form.proveedor || '',
-  fecha: form.fecha,
+  fecha: form.fecha ? form.fecha.replace('T', ' ') + ':00' : null,
   notas: form.notas || '',
   usuario,
 });
