@@ -197,7 +197,16 @@ console.log('Fecha normal JS:', new Date());
     const [result] = await conn.query(
       `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, proveedor, notas, usuario, fecha)
        VALUES (?, 'entrada', ?, ?, ?, ?, ?, ?, ?)`,
-      [producto_id, qty, stockAnterior, stockResultante, proveedor || null, notas || null, usuario || null, nowHN()]
+   [
+  producto_id,
+  qty,
+  stockAnterior,
+  stockResultante,
+  proveedor || null,
+  notas || null,
+  usuario || null,
+  fecha ? fecha.replace('T', ' ') + ':00' : nowHN()
+]
     );
 
     await conn.commit();
