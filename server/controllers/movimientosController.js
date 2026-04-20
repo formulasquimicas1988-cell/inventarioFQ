@@ -222,7 +222,7 @@ console.log('Fecha normal JS:', new Date());
   proveedor || null,
   notas || null,
   usuario || null,
-  fecha ? fecha.replace('T', ' ') + ':00' : nowHN()
+fecha || nowHN()
 ]
     );
 
