@@ -236,17 +236,8 @@ export default function Entradas() {
                 <tbody>
                   {entradas.map((e) => (
                     <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50" style={{ minHeight: '56px' }}>
-                  <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-  {new Date(e.fecha).toLocaleString('es-HN', {
-    timeZone: 'America/Tegucigalpa',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })}
-</td>
+           <td className="py-3 px-3 text-slate-600 whitespace-nowrap">{e.fecha}</td>
+                      
                       <td className="py-3 px-3 font-medium text-slate-800">{e.nombre || e.producto_nombre}</td>
                       <td className="py-3 px-3 font-mono text-slate-500 text-xs">{e.codigo || e.producto_codigo}</td>
                       <td className="py-3 px-3 text-right font-semibold text-green-600">
