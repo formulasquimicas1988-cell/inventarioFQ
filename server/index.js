@@ -1,6 +1,7 @@
 // Fijar zona horaria antes de cualquier require para que
 // Node.js y mysql2 usen siempre Tegucigalpa (UTC-6, sin cambio de horario)
 process.env.TZ = 'America/Tegucigalpa';
+console.log('TZ fix v2');
 
 require('dotenv').config();
 const express = require('express');
