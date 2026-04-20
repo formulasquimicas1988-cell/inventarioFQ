@@ -11,7 +11,7 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  timezone: 'local', // sigue process.env.TZ = 'America/Tegucigalpa'
+  timezone: '-06:00', // Honduras (America/Tegucigalpa, UTC-6, sin horario de verano)
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
 });
 
