@@ -102,13 +102,14 @@ export default function Entradas() {
     }
     setSaving(true);
     try {
-      await api.post('/api/movimientos/entrada', {
-        producto_id: form.producto.id,
-        cantidad: parseFloat(form.cantidad),
-        proveedor: form.proveedor || '',
-        notas: form.notas || '',
-        usuario,
-      });
+     await api.post('/api/movimientos/entrada', {
+  producto_id: form.producto.id,
+  cantidad: parseFloat(form.cantidad),
+  proveedor: form.proveedor || '',
+  fecha: form.fecha,
+  notas: form.notas || '',
+  usuario,
+});
       success('Entrada registrada correctamente');
       setForm(emptyForm());
       setPage(1);
