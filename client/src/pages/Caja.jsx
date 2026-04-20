@@ -1387,7 +1387,7 @@ export default function Caja() {
                   const precioMin = precios.length ? Math.min(...precios) : null;
                   const stockDisp = stockEfectivo(p, productos);
                   const sinStock = !p.sin_inventario && stockDisp <= 0;
-                  const stockBajo = !p.sin_inventario && !sinStock && stockDisp <= (p.stock_minimo ?? 0);
+                  const stockBajo = !p.sin_inventario && !sinStock && parseFloat(stockDisp) <= parseFloat(p.stock_minimo ?? 0);
                   return (
                     <button
                       key={p.id}

@@ -14,7 +14,9 @@
       "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"ALTER TABLE movimientos ADD COLUMN cancelado TINYINT\\(1\\) NOT NULL DEFAULT 0, ADD COLUMN cancelado_en DATETIME NULL;\")",
       "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"ALTER TABLE productos ADD COLUMN categoria_id_2 INT DEFAULT NULL, ADD CONSTRAINT fk_productos_categoria2 FOREIGN KEY \\(categoria_id_2\\) REFERENCES categorias\\(id\\) ON DELETE SET NULL;\")",
       "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"ALTER TABLE ventas AUTO_INCREMENT = 1079;\")",
-      "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = ''formulasquimicas'' AND TABLE_NAME = ''ventas'';\")"
+      "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = ''formulasquimicas'' AND TABLE_NAME = ''ventas'';\")",
+      "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"SELECT id, nombre, stock_actual, stock_minimo, producto_base_id, sin_inventario FROM productos WHERE nombre LIKE ''%alde%'';\")",
+      "Bash(/c/xampp/mysql/bin/mysql.exe -u root -h localhost --port=3306 formulasquimicas -e \"SELECT id, nombre, stock_actual, stock_minimo, producto_base_id FROM productos WHERE codigo=''BAL-001'';\")"
     ]
   }
 }
