@@ -1,5 +1,6 @@
 const pool = require('../db');
 const { logAudit, getClientIp } = require('../lib/audit');
+const { nowHN } = require('../lib/timeUtils');
 
 // GET /api/ventas
 const getAll = async (req, res) => {
@@ -121,14 +122,14 @@ const cobrarVenta = async (req, res) => {
     if (numeroTicket !== null) {
       [ventaResult] = await conn.query(
         `INSERT INTO ventas (numero_ticket, usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
-         VALUES (?, ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
-        [numeroTicket, usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio]
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [numeroTicket, usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio, nowHN()]
       );
     } else {
       [ventaResult] = await conn.query(
         `INSERT INTO ventas (usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
-         VALUES (?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
-        [usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio]
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio, nowHN()]
       );
     }
     const ventaId = ventaResult.insertId;
@@ -194,7 +195,7 @@ const cobrarVenta = async (req, res) => {
         await conn.query(
           `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante,
             cliente, notas, usuario, venta_id, fecha)
-           VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
+           VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             stockProductId,
             qty,
@@ -204,6 +205,7 @@ const cobrarVenta = async (req, res) => {
             `Venta #${ventaId}`,
             usuario || null,
             ventaId,
+            nowHN(),
           ]
         );
       }
@@ -372,13 +374,14 @@ const editarDetalle = async (req, res) => {
           await conn.query(
             `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante,
               cliente, notas, usuario, venta_id, fecha)
-             VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
+             VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               newBaseId, qty, stockAnterior, stockResultante,
               ventas[0].nombre_cliente || 'Venta directa',
               `Venta #${id} (editado)`,
               usuario || null,
               id,
+              nowHN(),
             ]
           );
         }

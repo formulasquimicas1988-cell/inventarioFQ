@@ -1,4 +1,5 @@
 const pool = require('../db');
+const { nowHN } = require('./timeUtils');
 
 /**
  * Registra una acción en la tabla de auditoría.
@@ -13,8 +14,8 @@ async function logAudit({ usuario, accion, modulo, detalle, ip }) {
   try {
     await pool.query(
       `INSERT INTO auditoria (usuario, accion, modulo, detalle, ip, fecha)
-       VALUES (?, ?, ?, ?, ?, CONVERT_TZ(NOW(), '+00:00', '-06:00'))`,
-      [usuario || 'Sistema', accion, modulo, detalle || null, ip || null]
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [usuario || 'Sistema', accion, modulo, detalle || null, ip || null, nowHN()]
     );
   } catch (err) {
     // Audit failures should never break the main operation
