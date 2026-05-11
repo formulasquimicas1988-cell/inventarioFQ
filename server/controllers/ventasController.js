@@ -108,31 +108,17 @@ const cobrarVenta = async (req, res) => {
     const efectivo = efectivo_recibido ? parseFloat(efectivo_recibido) : null;
     const cambio = efectivo != null ? Math.max(0, efectivo - total) : null;
 
-    // Número de ticket global siempre creciente (con fallback si la columna no existe aún)
-    let numeroTicket = null;
-    try {
-      const [[{ ultimoNum }]] = await conn.query(
-        `SELECT COALESCE(MAX(numero_ticket), 0) AS ultimoNum FROM ventas`
-      );
-      numeroTicket = ultimoNum + 1;
-    } catch (_) { /* columna aún no migrada */ }
-
-    // Insertar venta
-    let ventaResult;
-    if (numeroTicket !== null) {
-      [ventaResult] = await conn.query(
-        `INSERT INTO ventas (numero_ticket, usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [numeroTicket, usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio, nowHN()]
-      );
-    } else {
-      [ventaResult] = await conn.query(
-        `INSERT INTO ventas (usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio, nowHN()]
-      );
-    }
+    // Insertar venta — numero_ticket se sincroniza con el id (AUTO_INCREMENT) después del insert
+    const [ventaResult] = await conn.query(
+      `INSERT INTO ventas (usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio, nowHN()]
+    );
     const ventaId = ventaResult.insertId;
+    let numeroTicket = ventaId;
+    try {
+      await conn.query('UPDATE ventas SET numero_ticket = ? WHERE id = ?', [ventaId, ventaId]);
+    } catch (_) { /* columna aún no migrada */ }
 
     // Procesar cada item
     for (const item of items) {
@@ -417,4 +403,169 @@ const editarDetalle = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getById, cobrarVenta, anularVenta, editarDetalle };
+// POST /api/ventas/:id/detalle — solo admin
+const agregarDetalle = async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { id } = req.params;
+    const { producto_id, descripcion, cantidad, precio_unitario, sin_inventario, usuario } = req.body;
+
+    const [ventas] = await conn.query('SELECT * FROM ventas WHERE id = ? AND anulada = 0', [id]);
+    if (ventas.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Venta no encontrada o ya anulada' });
+    }
+
+    if (!descripcion?.trim() || !(parseFloat(cantidad) > 0) || !(parseFloat(precio_unitario) >= 0)) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Descripción, cantidad y precio son requeridos' });
+    }
+
+    const cant = parseFloat(cantidad);
+    const precio = parseFloat(precio_unitario);
+    const subtotal = cant * precio;
+    const esInventario = !sin_inventario && producto_id;
+
+    await conn.query(
+      `INSERT INTO detalle_ventas (venta_id, producto_id, descripcion, cantidad, precio_unitario, subtotal, sin_inventario)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, producto_id || null, descripcion.trim(), cant, precio, subtotal, sin_inventario ? 1 : 0]
+    );
+
+    if (esInventario) {
+      const [prods] = await conn.query(
+        'SELECT id, stock_actual, producto_base_id FROM productos WHERE id = ? AND activo = 1',
+        [producto_id]
+      );
+      if (prods.length > 0) {
+        const baseId = prods[0].producto_base_id || prods[0].id;
+        const [base] = await conn.query('SELECT id, stock_actual FROM productos WHERE id = ? FOR UPDATE', [baseId]);
+        if (base.length > 0) {
+          const qty = Math.round(cant);
+          const stockAnterior = parseInt(base[0].stock_actual);
+          if (stockAnterior < qty) {
+            await conn.rollback();
+            return res.status(409).json({
+              error: `Stock insuficiente para "${descripcion}": hay ${stockAnterior} pero se necesitan ${qty}.`,
+            });
+          }
+          const stockResultante = stockAnterior - qty;
+          await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, baseId]);
+          await conn.query(
+            `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante,
+              cliente, notas, usuario, venta_id, fecha)
+             VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              baseId, qty, stockAnterior, stockResultante,
+              ventas[0].nombre_cliente || 'Venta directa',
+              `Venta #${id} (agregado)`,
+              usuario || null,
+              id,
+              nowHN(),
+            ]
+          );
+        }
+      }
+    }
+
+    const [allDetalles] = await conn.query('SELECT subtotal FROM detalle_ventas WHERE venta_id = ?', [id]);
+    const newTotal = allDetalles.reduce((sum, d) => sum + parseFloat(d.subtotal), 0);
+    await conn.query('UPDATE ventas SET total = ? WHERE id = ?', [newTotal, id]);
+
+    await conn.commit();
+
+    const ip = getClientIp(req);
+    await logAudit({
+      usuario,
+      accion: 'agregó',
+      modulo: 'Venta',
+      detalle: `Agregó "${descripcion}" a venta #${id}`,
+      ip,
+    });
+
+    res.status(201).json({ message: 'Producto agregado correctamente', total: newTotal });
+  } catch (err) {
+    await conn.rollback();
+    console.error('agregarDetalle error:', err);
+    res.status(500).json({ error: 'Error al agregar el producto' });
+  } finally {
+    conn.release();
+  }
+};
+
+// DELETE /api/ventas/:id/detalle/:detalleId — solo admin
+const eliminarDetalle = async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { id, detalleId } = req.params;
+    const { usuario } = req.body;
+
+    const [ventas] = await conn.query('SELECT * FROM ventas WHERE id = ? AND anulada = 0', [id]);
+    if (ventas.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Venta no encontrada o ya anulada' });
+    }
+
+    const [detalles] = await conn.query(
+      'SELECT * FROM detalle_ventas WHERE id = ? AND venta_id = ?',
+      [detalleId, id]
+    );
+    if (detalles.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Detalle no encontrado' });
+    }
+    const detalle = detalles[0];
+
+    if (detalle.producto_id && !detalle.sin_inventario) {
+      const [prods] = await conn.query(
+        'SELECT id, producto_base_id FROM productos WHERE id = ?',
+        [detalle.producto_id]
+      );
+      if (prods.length > 0) {
+        const baseId = prods[0].producto_base_id || prods[0].id;
+        const [movs] = await conn.query(
+          'SELECT * FROM movimientos WHERE venta_id = ? AND producto_id = ? LIMIT 1',
+          [id, baseId]
+        );
+        if (movs.length > 0) {
+          await conn.query(
+            'UPDATE productos SET stock_actual = ? WHERE id = ?',
+            [parseInt(movs[0].cantidad_anterior), baseId]
+          );
+          await conn.query('DELETE FROM movimientos WHERE id = ?', [movs[0].id]);
+        }
+      }
+    }
+
+    await conn.query('DELETE FROM detalle_ventas WHERE id = ?', [detalleId]);
+
+    const [allDetalles] = await conn.query('SELECT subtotal FROM detalle_ventas WHERE venta_id = ?', [id]);
+    const newTotal = allDetalles.reduce((sum, d) => sum + parseFloat(d.subtotal), 0);
+    await conn.query('UPDATE ventas SET total = ? WHERE id = ?', [newTotal, id]);
+
+    await conn.commit();
+
+    const ip = getClientIp(req);
+    await logAudit({
+      usuario,
+      accion: 'eliminó',
+      modulo: 'Venta',
+      detalle: `Eliminó detalle #${detalleId} ("${detalle.descripcion}") de venta #${id}`,
+      ip,
+    });
+
+    res.json({ message: 'Producto eliminado correctamente', total: newTotal });
+  } catch (err) {
+    await conn.rollback();
+    console.error('eliminarDetalle error:', err);
+    res.status(500).json({ error: 'Error al eliminar el producto' });
+  } finally {
+    conn.release();
+  }
+};
+
+module.exports = { getAll, getById, cobrarVenta, anularVenta, editarDetalle, agregarDetalle, eliminarDetalle };

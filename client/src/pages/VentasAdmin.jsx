@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Search, Eye, XCircle, Pencil, X, ChevronDown, ChevronUp, AlertCircle, Check } from 'lucide-react';
+import { Search, Eye, XCircle, Pencil, AlertCircle, Check, Trash2, Plus } from 'lucide-react';
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../context/ToastContext';
@@ -13,7 +13,11 @@ const fmt = (v) => `L ${parseFloat(v || 0).toFixed(2)}`;
 
 // ── Modal detalle de venta ────────────────────────────────────────────────────
 
-function DetalleModal({ venta, onClose, onAnular, onEditDetalle, anulando }) {
+function DetalleModal({ venta, onClose, onAnular, onEditDetalle, onDeleteDetalle, onAgregarDetalle, anulando, deletingId }) {
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  useEffect(() => { setConfirmDeleteId(null); }, [venta?.id]);
+
   return (
     <Modal isOpen={!!venta} onClose={onClose} title={`Venta #${venta?.id}`} size="lg">
       {venta && (
@@ -53,7 +57,7 @@ function DetalleModal({ venta, onClose, onAnular, onEditDetalle, anulando }) {
                   <th className="text-right px-3 py-2 text-slate-500 font-medium">P.U.</th>
                   <th className="text-right px-3 py-2 text-slate-500 font-medium">Subtotal</th>
                   {!venta.anulada && (
-                    <th className="px-3 py-2 text-slate-500 font-medium text-right">Editar</th>
+                    <th className="px-3 py-2 text-slate-500 font-medium text-right">Acciones</th>
                   )}
                 </tr>
               </thead>
@@ -71,12 +75,40 @@ function DetalleModal({ venta, onClose, onAnular, onEditDetalle, anulando }) {
                     <td className="px-3 py-2 text-right font-semibold text-slate-800">{fmt(d.subtotal)}</td>
                     {!venta.anulada && (
                       <td className="px-3 py-2 text-right">
-                        <button
-                          onClick={() => onEditDetalle(d)}
-                          className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50"
-                        >
-                          <Pencil size={14} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => onEditDetalle(d)}
+                            className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50"
+                            title="Editar"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          {confirmDeleteId === d.id ? (
+                            <>
+                              <button
+                                onClick={() => { setConfirmDeleteId(null); onDeleteDetalle(d); }}
+                                disabled={deletingId === d.id}
+                                className="text-xs px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
+                              >
+                                {deletingId === d.id ? '...' : '¿Sí?'}
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="text-xs px-2 py-0.5 rounded bg-slate-200 text-slate-600 hover:bg-slate-300"
+                              >
+                                No
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteId(d.id)}
+                              className="p-1.5 rounded-lg text-red-400 hover:bg-red-50"
+                              title="Eliminar"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -84,6 +116,17 @@ function DetalleModal({ venta, onClose, onAnular, onEditDetalle, anulando }) {
               </tbody>
             </table>
           </div>
+
+          {/* Botón agregar producto */}
+          {!venta.anulada && (
+            <button
+              onClick={onAgregarDetalle}
+              className="flex items-center gap-1.5 text-sm text-brand-blue hover:text-blue-700 font-medium self-start"
+            >
+              <Plus size={15} />
+              Agregar producto
+            </button>
+          )}
 
           {/* Totales */}
           <div className="bg-slate-50 rounded-lg px-4 py-3 space-y-1">
@@ -272,6 +315,146 @@ function EditDetalleModal({ detalle, ventaId, usuarioId, onSaved, onClose }) {
   );
 }
 
+// ── Modal agregar detalle ─────────────────────────────────────────────────────
+
+function AgregarDetalleModal({ ventaId, usuarioId, onSaved, onClose }) {
+  const { usuario } = useUser();
+  const { success, error } = useToast();
+  const [productos, setProductos] = useState([]);
+  const [busqProd, setBusqProd] = useState('');
+  const [prodId, setProdId] = useState('');
+  const [desc, setDesc] = useState('');
+  const [cant, setCant] = useState('1');
+  const [precio, setPrecio] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get('/api/productos', { params: { limit: 500, activo: 1 } }).then(res => {
+      setProductos(Array.isArray(res.data?.data) ? res.data.data : []);
+    }).catch(() => {});
+  }, []);
+
+  const prodsFiltrados = busqProd.trim()
+    ? productos.filter(p => p.nombre.toLowerCase().includes(busqProd.toLowerCase()) || p.codigo.toLowerCase().includes(busqProd.toLowerCase()))
+    : productos;
+
+  const subtotal = (parseFloat(cant) || 0) * (parseFloat(precio) || 0);
+
+  const handleSave = async () => {
+    if (!desc.trim()) { error('Ingresa una descripción'); return; }
+    if (!(parseFloat(cant) > 0)) { error('La cantidad debe ser mayor a 0'); return; }
+    if (precio === '' || isNaN(parseFloat(precio))) { error('Ingresa un precio válido'); return; }
+    setSaving(true);
+    try {
+      await api.post(`/api/ventas/${ventaId}/detalle`, {
+        usuario_id: usuarioId,
+        usuario,
+        producto_id: prodId ? parseInt(prodId) : null,
+        descripcion: desc.trim(),
+        cantidad: parseFloat(cant),
+        precio_unitario: parseFloat(precio),
+        sin_inventario: !prodId ? 1 : 0,
+      });
+      success('Producto agregado correctamente');
+      onSaved();
+    } catch (err) {
+      error(err.message || 'Error al agregar el producto');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title="Agregar producto a venta" size="md">
+      <div className="flex flex-col gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Producto (opcional)</label>
+          <div className="relative mb-2">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={busqProd}
+              onChange={e => setBusqProd(e.target.value)}
+              placeholder="Buscar producto..."
+              className="w-full min-h-[40px] pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
+          <select
+            value={prodId}
+            onChange={e => {
+              const val = e.target.value;
+              setProdId(val);
+              if (val) {
+                const p = productos.find(p => p.id === parseInt(val));
+                if (p) {
+                  setDesc(p.nombre);
+                  const firstPrecio = [p.precio_a, p.precio_b, p.precio_c, p.precio_d].find(v => v != null);
+                  if (firstPrecio != null) setPrecio(String(firstPrecio));
+                }
+              }
+            }}
+            className="w-full min-h-[40px] px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red"
+          >
+            <option value="">— Sin producto (S/I) —</option>
+            {prodsFiltrados.slice(0, 50).map(p => (
+              <option key={p.id} value={p.id}>{p.nombre} ({p.codigo})</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Descripción en ticket</label>
+          <input
+            type="text"
+            value={desc}
+            onChange={e => setDesc(e.target.value)}
+            placeholder="Descripción del producto o servicio"
+            className="w-full min-h-[40px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Cantidad</label>
+            <input
+              type="number"
+              value={cant}
+              onChange={e => setCant(e.target.value)}
+              min="0.01" step="0.01"
+              className="w-full min-h-[40px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Precio unitario</label>
+            <input
+              type="number"
+              value={precio}
+              onChange={e => setPrecio(e.target.value)}
+              min="0" step="0.01"
+              className="w-full min-h-[40px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
+        </div>
+
+        <div className="bg-slate-50 rounded-lg px-3 py-2 flex justify-between text-sm">
+          <span className="text-slate-500">Subtotal</span>
+          <span className="font-bold text-brand-blue">{fmt(subtotal)}</span>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2 border-t">
+          <button onClick={onClose} className="min-h-[40px] px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">
+            Cancelar
+          </button>
+          <SafeButton onClick={handleSave} loading={saving} variant="primary">
+            <Plus size={16} />
+            Agregar producto
+          </SafeButton>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function VentasAdmin() {
@@ -288,11 +471,13 @@ export default function VentasAdmin() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  const [ventaDetalle, setVentaDetalle] = useState(null);  // venta con detalles
-  const [editDetalleItem, setEditDetalleItem] = useState(null); // detalle a editar
+  const [ventaDetalle, setVentaDetalle] = useState(null);
+  const [editDetalleItem, setEditDetalleItem] = useState(null);
   const [anulando, setAnulando] = useState(false);
   const [showMotivo, setShowMotivo] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const [deletingDetalleId, setDeletingDetalleId] = useState(null);
+  const [agregarDetalleOpen, setAgregarDetalleOpen] = useState(false);
 
   const searchDebounce = useRef(null);
 
@@ -337,6 +522,13 @@ export default function VentasAdmin() {
     }
   };
 
+  const refrescarDetalle = async (id) => {
+    try {
+      const res = await api.get(`/api/ventas/${id}`);
+      setVentaDetalle(res.data);
+    } catch {}
+  };
+
   const handleAnular = () => {
     setShowMotivo(true);
   };
@@ -360,12 +552,29 @@ export default function VentasAdmin() {
 
   const handleEditDetalleSaved = async () => {
     setEditDetalleItem(null);
-    if (ventaDetalle) {
-      try {
-        const res = await api.get(`/api/ventas/${ventaDetalle.id}`);
-        setVentaDetalle(res.data);
-      } catch {}
+    if (ventaDetalle) await refrescarDetalle(ventaDetalle.id);
+    fetchVentas(search, fechaInicio, fechaFin, anuladas, page);
+  };
+
+  const handleDeleteDetalle = async (detalle) => {
+    setDeletingDetalleId(detalle.id);
+    try {
+      await api.delete(`/api/ventas/${ventaDetalle.id}/detalle/${detalle.id}`, {
+        data: { usuario_id: usuarioId, usuario },
+      });
+      success('Producto eliminado de la venta');
+      await refrescarDetalle(ventaDetalle.id);
+      fetchVentas(search, fechaInicio, fechaFin, anuladas, page);
+    } catch (err) {
+      error(err.message || 'Error al eliminar el producto');
+    } finally {
+      setDeletingDetalleId(null);
     }
+  };
+
+  const handleAgregarDetalleSaved = async () => {
+    setAgregarDetalleOpen(false);
+    if (ventaDetalle) await refrescarDetalle(ventaDetalle.id);
     fetchVentas(search, fechaInicio, fechaFin, anuladas, page);
   };
 
@@ -484,7 +693,10 @@ export default function VentasAdmin() {
         onClose={() => { setVentaDetalle(null); setShowMotivo(false); setMotivo(''); }}
         onAnular={handleAnular}
         onEditDetalle={(d) => setEditDetalleItem(d)}
+        onDeleteDetalle={handleDeleteDetalle}
+        onAgregarDetalle={() => setAgregarDetalleOpen(true)}
         anulando={anulando}
+        deletingId={deletingDetalleId}
       />
 
       {/* Modal confirmación anulación */}
@@ -538,6 +750,16 @@ export default function VentasAdmin() {
           usuarioId={usuarioId}
           onSaved={handleEditDetalleSaved}
           onClose={() => setEditDetalleItem(null)}
+        />
+      )}
+
+      {/* Modal agregar detalle */}
+      {agregarDetalleOpen && ventaDetalle && (
+        <AgregarDetalleModal
+          ventaId={ventaDetalle.id}
+          usuarioId={usuarioId}
+          onSaved={handleAgregarDetalleSaved}
+          onClose={() => setAgregarDetalleOpen(false)}
         />
       )}
     </div>
