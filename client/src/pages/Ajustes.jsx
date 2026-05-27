@@ -116,7 +116,7 @@ export default function Ajustes() {
       setPage(1);
       fetchAjustes(search, 1);
     } catch (err) {
-      error(err?.response?.data?.message || 'Error al registrar el ajuste');
+      error(err?.response?.data?.error || 'Error al registrar el ajuste');
     } finally {
       setSaving(false);
     }
@@ -311,7 +311,7 @@ export default function Ajustes() {
         onClose={() => setCancelItem(null)}
         onConfirm={handleCancelar}
         title="Cancelar ajuste"
-        message={cancelItem ? `¿Cancelar el ajuste de "${cancelItem.nombre || cancelItem.producto_nombre}"? El stock se restaurará al valor anterior (${Number(cancelItem.stock_anterior ?? cancelItem.cantidad_anterior).toLocaleString('es-MX', { minimumFractionDigits: 0 })}).` : ''}
+        message={cancelItem ? `¿Cancelar el ajuste de "${cancelItem.nombre || cancelItem.producto_nombre}"? Se revertirá la diferencia de ese ajuste sobre el stock actual.` : ''}
         confirmText="Sí, cancelar"
         cancelText="No, mantener"
       />

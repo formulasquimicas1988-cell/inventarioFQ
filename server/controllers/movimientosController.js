@@ -208,9 +208,6 @@ const createEntrada = async (req, res) => {
     await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, producto_id]);
 
     // Insert movement
-    console.log('TZ:', process.env.TZ);
-console.log('Hora nowHN:', nowHN());
-console.log('Fecha normal JS:', new Date());
     const [result] = await conn.query(
       `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, proveedor, notas, usuario, fecha)
        VALUES (?, 'entrada', ?, ?, ?, ?, ?, ?, ?)`,
@@ -326,7 +323,7 @@ const createAjuste = async (req, res) => {
     const [result] = await conn.query(
       `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
        VALUES (?, 'ajuste', ?, ?, ?, ?, ?, ?)`,
-      [producto_id, diferencia, stockAnterior, newQty, notas.trim(), usuario || null, nowHN()]
+      [producto_id, diferencia, stockAnterior, newQty, notas.trim(), usuario || null, fecha || nowHN()]
     );
 
     await conn.commit();
@@ -450,15 +447,32 @@ const cancelarMovimiento = async (req, res) => {
       return res.status(400).json({ error: 'Este movimiento ya fue cancelado' });
     }
 
-    const stockAnterior = parseInt(mov.cantidad_anterior);
-
-    if (stockAnterior == null || isNaN(stockAnterior)) {
+    if (mov.venta_id) {
       await conn.rollback();
-      return res.status(400).json({ error: 'Este movimiento no puede cancelarse porque no tiene stock anterior registrado' });
+      return res.status(400).json({ error: 'Este movimiento pertenece a una venta. Para revertirlo, anule la venta correspondiente.' });
     }
 
-    // Restore stock to what it was before this movement
-    await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockAnterior, mov.producto_id]);
+    // Calcular el delta inverso según el tipo de movimiento
+    let delta = 0;
+    if (mov.tipo === 'salida' || mov.tipo === 'dañado') {
+      delta = parseInt(mov.cantidad); // salida/dañado restó, cancelar suma
+    } else if (mov.tipo === 'entrada') {
+      delta = -parseInt(mov.cantidad); // entrada sumó, cancelar resta
+    } else if (mov.tipo === 'ajuste') {
+      const stockRes = parseInt(mov.stock_resultante);
+      const stockAnt = parseInt(mov.cantidad_anterior);
+      if (isNaN(stockRes) || isNaN(stockAnt)) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Este ajuste no puede cancelarse porque no tiene datos de stock anteriores registrados' });
+      }
+      delta = -(stockRes - stockAnt); // revertir la diferencia del ajuste
+    } else {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Tipo de movimiento no reconocido' });
+    }
+
+    // Aplicar delta inverso al stock actual (no restaurar foto antigua)
+    await conn.query('UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?', [delta, mov.producto_id]);
 
     // Soft-delete: marcar como cancelado (no borrar)
     await conn.query('UPDATE movimientos SET cancelado = 1, cancelado_en = NOW() WHERE id = ?', [req.params.id]);

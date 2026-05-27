@@ -237,20 +237,31 @@ const anularVenta = async (req, res) => {
       return res.status(400).json({ error: 'La venta ya está anulada' });
     }
 
-    // Revertir movimientos de inventario generados por esta venta
+    // Revertir movimientos de inventario generados por esta venta (solo los no cancelados)
     const [movs] = await conn.query(
-      'SELECT * FROM movimientos WHERE venta_id = ?',
+      'SELECT * FROM movimientos WHERE venta_id = ? AND (cancelado = 0 OR cancelado IS NULL)',
       [id]
     );
 
     for (const mov of movs) {
-      const stockAnterior = parseInt(mov.cantidad_anterior);
+      // Las ventas generan movimientos tipo 'salida', revertir suma cantidad de vuelta
+      let delta = 0;
+      if (mov.tipo === 'salida' || mov.tipo === 'dañado') {
+        delta = parseInt(mov.cantidad);
+      } else if (mov.tipo === 'entrada') {
+        delta = -parseInt(mov.cantidad);
+      } else if (mov.tipo === 'ajuste') {
+        delta = -(parseInt(mov.stock_resultante) - parseInt(mov.cantidad_anterior));
+      }
       await conn.query(
-        'UPDATE productos SET stock_actual = ? WHERE id = ?',
-        [stockAnterior, mov.producto_id]
+        'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+        [delta, mov.producto_id]
       );
       await conn.query('DELETE FROM movimientos WHERE id = ?', [mov.id]);
     }
+
+    // Eliminar también los movimientos ya cancelados vinculados a esta venta (limpieza)
+    await conn.query('DELETE FROM movimientos WHERE venta_id = ? AND cancelado = 1', [id]);
 
     await conn.query(
       'UPDATE ventas SET anulada = 1, motivo_anulacion = ? WHERE id = ?',
@@ -316,14 +327,14 @@ const editarDetalle = async (req, res) => {
         const oldBaseId = oldProds[0].producto_base_id || oldProds[0].id;
         // Buscar el movimiento de esta venta para ese producto base
         const [oldMovs] = await conn.query(
-          'SELECT * FROM movimientos WHERE venta_id = ? AND producto_id = ? LIMIT 1',
+          'SELECT * FROM movimientos WHERE venta_id = ? AND producto_id = ? AND (cancelado = 0 OR cancelado IS NULL) ORDER BY id DESC LIMIT 1',
           [id, oldBaseId]
         );
         if (oldMovs.length > 0) {
           const mov = oldMovs[0];
           await conn.query(
-            'UPDATE productos SET stock_actual = ? WHERE id = ?',
-            [parseInt(mov.cantidad_anterior), oldBaseId]
+            'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+            [parseInt(mov.cantidad), oldBaseId]
           );
           await conn.query('DELETE FROM movimientos WHERE id = ?', [mov.id]);
         }
@@ -355,6 +366,12 @@ const editarDetalle = async (req, res) => {
         if (newBase.length > 0) {
           const qty = Math.round(nuevaCant);
           const stockAnterior = parseInt(newBase[0].stock_actual);
+          if (stockAnterior < qty) {
+            await conn.rollback();
+            return res.status(409).json({
+              error: `Stock insuficiente: hay ${stockAnterior} en existencia pero se necesitan ${qty}.`,
+            });
+          }
           const stockResultante = stockAnterior - qty;
           await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, newBaseId]);
           await conn.query(
@@ -528,13 +545,13 @@ const eliminarDetalle = async (req, res) => {
       if (prods.length > 0) {
         const baseId = prods[0].producto_base_id || prods[0].id;
         const [movs] = await conn.query(
-          'SELECT * FROM movimientos WHERE venta_id = ? AND producto_id = ? LIMIT 1',
+          'SELECT * FROM movimientos WHERE venta_id = ? AND producto_id = ? AND (cancelado = 0 OR cancelado IS NULL) ORDER BY id DESC LIMIT 1',
           [id, baseId]
         );
         if (movs.length > 0) {
           await conn.query(
-            'UPDATE productos SET stock_actual = ? WHERE id = ?',
-            [parseInt(movs[0].cantidad_anterior), baseId]
+            'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+            [parseInt(movs[0].cantidad), baseId]
           );
           await conn.query('DELETE FROM movimientos WHERE id = ?', [movs[0].id]);
         }
