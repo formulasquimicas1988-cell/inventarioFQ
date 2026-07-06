@@ -95,7 +95,8 @@ export default function Ajustes() {
       error('Selecciona un producto');
       return;
     }
-    if (form.nueva_cantidad === '' || parseFloat(form.nueva_cantidad) < 0) {
+    const qty = parseFloat(form.nueva_cantidad);
+    if (form.nueva_cantidad === '' || isNaN(qty) || qty < 0) {
       error('La nueva cantidad debe ser 0 o mayor');
       return;
     }
@@ -105,18 +106,20 @@ export default function Ajustes() {
     }
     setSaving(true);
     try {
-      await api.post('/api/movimientos/ajuste', {
+      const res = await api.post('/api/movimientos/ajuste', {
         producto_id: form.producto.id,
-        nueva_cantidad: parseFloat(form.nueva_cantidad),
+        nueva_cantidad: qty,
         notas: form.notas.trim(),
+        fecha: form.fecha || undefined,
         usuario,
       });
-      success('Ajuste registrado correctamente');
+      const stockNuevo = res.data?.stock_resultante ?? qty;
+      success(`Ajuste guardado — stock actualizado a ${Number(stockNuevo).toLocaleString('es-MX')}`);
       setForm(emptyForm());
       setPage(1);
       fetchAjustes(search, 1);
     } catch (err) {
-      error(err?.response?.data?.error || 'Error al registrar el ajuste');
+      error(err.message || 'Error al registrar el ajuste');
     } finally {
       setSaving(false);
     }

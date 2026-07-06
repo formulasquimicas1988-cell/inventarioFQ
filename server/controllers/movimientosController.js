@@ -309,21 +309,28 @@ const createAjuste = async (req, res) => {
     }
     if (!notas || !notas.trim()) return res.status(400).json({ error: 'Las notas son requeridas para ajustes' });
 
-    // Get current stock
-    const [products] = await conn.query('SELECT id, stock_actual FROM productos WHERE id = ? AND activo = 1', [producto_id]);
+    // Obtener el producto y verificar si tiene producto_base_id (comparte stock con otro)
+    const [products] = await conn.query('SELECT id, stock_actual, producto_base_id FROM productos WHERE id = ? AND activo = 1', [producto_id]);
     if (products.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const stockAnterior = parseInt(products[0].stock_actual);
+    // Si el producto apunta a un base, el stock real está en el base (igual que cobrarVenta)
+    const stockProductId = products[0].producto_base_id || products[0].id;
+
+    // Leer stock con FOR UPDATE para evitar condiciones de carrera
+    const [baseProducts] = await conn.query('SELECT id, stock_actual FROM productos WHERE id = ? FOR UPDATE', [stockProductId]);
+    if (baseProducts.length === 0) return res.status(404).json({ error: 'Producto base no encontrado' });
+
+    const stockAnterior = parseInt(baseProducts[0].stock_actual);
     const diferencia = Math.abs(newQty - stockAnterior);
 
-    // Update stock to new absolute value
-    await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [newQty, producto_id]);
+    // Update stock to new absolute value sobre el producto correcto
+    await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [newQty, stockProductId]);
 
-    // Insert movement
+    // Insert movement vinculado al producto cuyo stock se actualizó
     const [result] = await conn.query(
       `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
        VALUES (?, 'ajuste', ?, ?, ?, ?, ?, ?)`,
-      [producto_id, diferencia, stockAnterior, newQty, notas.trim(), usuario || null, fecha || nowHN()]
+      [stockProductId, diferencia, stockAnterior, newQty, notas.trim(), usuario || null, fecha || nowHN()]
     );
 
     await conn.commit();
