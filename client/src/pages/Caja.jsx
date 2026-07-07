@@ -511,11 +511,18 @@ function DetalleVentaModal({ venta, onClose, onReimprimir }) {
             </div>
           )}
           <button
-            onClick={onReimprimir}
+            onClick={() => onReimprimir(true)}
             className="w-full mt-3 min-h-[44px] bg-brand-blue hover:bg-blue-800 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors"
           >
             <Printer size={16} />
             Reimprimir (copia)
+          </button>
+          <button
+            onClick={() => onReimprimir(false)}
+            className="w-full mt-2 min-h-[44px] bg-slate-700 hover:bg-slate-800 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors"
+          >
+            <Printer size={16} />
+            Reimprimir original
           </button>
         </div>
       </div>
@@ -1466,7 +1473,7 @@ export default function Caja() {
         <DetalleVentaModal
           venta={ventaDetalle}
           onClose={() => setVentaDetalle(null)}
-          onReimprimir={() => imprimirTicket({
+          onReimprimir={(esCopia) => imprimirTicket({
             id: ventaDetalle.id,
             numero_ticket: ventaDetalle.numero_ticket,
             items: (ventaDetalle.detalles || []).map(d => ({
@@ -1481,7 +1488,7 @@ export default function Caja() {
             nombreCliente: ventaDetalle.nombre_cliente,
             fecha: ventaDetalle.fecha,
             vendedor: ventaDetalle.vendedor,
-          }, true)}
+          }, esCopia)}
         />
       )}
 
