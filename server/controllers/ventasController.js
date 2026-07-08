@@ -92,7 +92,7 @@ const cobrarVenta = async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const { usuario_id, usuario, nombre_cliente, efectivo_recibido, items } = req.body;
+    const { usuario_id, usuario, nombre_cliente, efectivo_recibido, items, client_uid } = req.body;
 
     if (!usuario_id) {
       await conn.rollback();
@@ -108,12 +108,48 @@ const cobrarVenta = async (req, res) => {
     const efectivo = efectivo_recibido ? parseFloat(efectivo_recibido) : null;
     const cambio = efectivo != null ? Math.max(0, efectivo - total) : null;
 
-    // Insertar venta — numero_ticket se sincroniza con el id (AUTO_INCREMENT) después del insert
-    const [ventaResult] = await conn.query(
-      `INSERT INTO ventas (usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio, nowHN()]
-    );
+    // Insertar venta — numero_ticket se sincroniza con el id (AUTO_INCREMENT) después del insert.
+    // client_uid tiene índice UNIQUE: si el mismo cobro llega dos veces (doble clic,
+    // Enter repetido o reintento tras timeout), la segunda inserción falla y se
+    // devuelve la venta ya registrada en lugar de duplicarla.
+    const ventaValues = [usuario_id, nombre_cliente?.trim() || null, total, efectivo, cambio, nowHN()];
+    let ventaResult;
+    try {
+      [ventaResult] = await conn.query(
+        `INSERT INTO ventas (usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha, client_uid)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [...ventaValues, client_uid || null]
+      );
+    } catch (insertErr) {
+      if (insertErr.code === 'ER_DUP_ENTRY' && client_uid) {
+        await conn.rollback();
+        const [dups] = await pool.query(
+          'SELECT id, numero_ticket, total, cambio FROM ventas WHERE client_uid = ?',
+          [client_uid]
+        );
+        if (dups.length > 0) {
+          const d = dups[0];
+          return res.status(200).json({
+            id: d.id,
+            numero_ticket: d.numero_ticket || d.id,
+            total: parseFloat(d.total),
+            cambio: d.cambio != null ? parseFloat(d.cambio) : null,
+            duplicada: true,
+          });
+        }
+        return res.status(409).json({ error: 'Esta venta ya fue registrada' });
+      }
+      if (insertErr.code === 'ER_BAD_FIELD_ERROR') {
+        // columna client_uid aún no migrada
+        [ventaResult] = await conn.query(
+          `INSERT INTO ventas (usuario_id, nombre_cliente, total, efectivo_recibido, cambio, fecha)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          ventaValues
+        );
+      } else {
+        throw insertErr;
+      }
+    }
     const ventaId = ventaResult.insertId;
     let numeroTicket = ventaId;
     try {

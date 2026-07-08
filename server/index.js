@@ -62,6 +62,29 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Migración automática al arrancar: columna client_uid en ventas (previene
+// ventas duplicadas). Es idempotente: si la columna/índice ya existen no hace
+// nada, y si falla el servidor sigue funcionando igual que antes.
+const pool = require('./db');
+(async () => {
+  try {
+    await pool.query('ALTER TABLE ventas ADD COLUMN client_uid VARCHAR(36) DEFAULT NULL');
+    console.log('✔ Migración: columna client_uid agregada a ventas');
+  } catch (err) {
+    if (err.code !== 'ER_DUP_FIELDNAME') {
+      console.error('Migración client_uid (columna):', err.message);
+    }
+  }
+  try {
+    await pool.query('CREATE UNIQUE INDEX idx_ventas_client_uid ON ventas (client_uid)');
+    console.log('✔ Migración: índice único idx_ventas_client_uid creado');
+  } catch (err) {
+    if (err.code !== 'ER_DUP_KEYNAME') {
+      console.error('Migración client_uid (índice):', err.message);
+    }
+  }
+})();
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

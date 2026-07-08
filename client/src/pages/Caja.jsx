@@ -749,6 +749,14 @@ export default function Caja() {
   const carritoStateRef = useRef([]);
   useEffect(() => { carritoStateRef.current = carrito; }, [carrito]);
 
+  // Protección contra doble cobro: el ref bloquea de forma síncrona (el estado
+  // `cobrando` no alcanza a actualizarse entre dos Enter/clics seguidos)
+  const cobrandoRef = useRef(false);
+  // UID de idempotencia: se mantiene entre reintentos del mismo carrito para que
+  // el servidor no registre la venta dos veces; se descarta si el carrito cambia
+  const ventaUidRef = useRef(null);
+  useEffect(() => { ventaUidRef.current = null; }, [carrito]);
+
   // ── Cargar productos ──────────────────────────────────────────────────────
 
   const cargarProductos = useCallback(async (silencioso = false) => {
@@ -966,6 +974,7 @@ export default function Caja() {
   // ── Cobrar ────────────────────────────────────────────────────────────────
 
   const cobrar = useCallback(async () => {
+    if (cobrandoRef.current) return;
     if (!carrito.length) return;
     if (!usuarioId) {
       setErrorCobro('Sesión sin ID de usuario. Por favor cierra sesión y vuelve a entrar.');
@@ -987,13 +996,18 @@ export default function Caja() {
     }
 
     setErrorCobro('');
+    cobrandoRef.current = true;
     setCobrando(true);
+    if (!ventaUidRef.current) {
+      ventaUidRef.current = crypto.randomUUID?.() ?? genId();
+    }
     try {
       const res = await api.post('/api/ventas', {
         usuario_id: usuarioId,
         usuario,
         nombre_cliente: nombreCliente.trim() || null,
         efectivo_recibido: efectivo !== '' ? parseFloat(efectivo) : null,
+        client_uid: ventaUidRef.current,
         items: carrito.map(i => ({
           producto_id: i.producto_id,
           descripcion: i.descripcion,
@@ -1016,6 +1030,7 @@ export default function Caja() {
         vendedor: usuario,
       };
 
+      ventaUidRef.current = null;
       setCarrito([]);
       setNombreCliente('');
       setEfectivo('');
@@ -1025,6 +1040,7 @@ export default function Caja() {
     } catch (err) {
       setErrorCobro(err.message || 'Error al cobrar la venta');
     } finally {
+      cobrandoRef.current = false;
       setCobrando(false);
     }
   }, [carrito, usuarioId, usuario, nombreCliente, efectivo, total, productos, refrescarTicketNum]);
