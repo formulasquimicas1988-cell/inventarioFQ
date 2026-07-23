@@ -461,7 +461,7 @@ const cancelarMovimiento = async (req, res) => {
 
     // Calcular el delta inverso según el tipo de movimiento
     let delta = 0;
-    if (mov.tipo === 'salida' || mov.tipo === 'dañado') {
+    if (mov.tipo === 'salida' || mov.tipo === 'danado' || mov.tipo === 'dañado') {
       delta = parseInt(mov.cantidad); // salida/dañado restó, cancelar suma
     } else if (mov.tipo === 'entrada') {
       delta = -parseInt(mov.cantidad); // entrada sumó, cancelar resta

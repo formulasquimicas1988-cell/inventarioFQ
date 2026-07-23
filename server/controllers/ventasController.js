@@ -282,7 +282,7 @@ const anularVenta = async (req, res) => {
     for (const mov of movs) {
       // Las ventas generan movimientos tipo 'salida', revertir suma cantidad de vuelta
       let delta = 0;
-      if (mov.tipo === 'salida' || mov.tipo === 'dañado') {
+      if (mov.tipo === 'salida' || mov.tipo === 'danado' || mov.tipo === 'dañado') {
         delta = parseInt(mov.cantidad);
       } else if (mov.tipo === 'entrada') {
         delta = -parseInt(mov.cantidad);
