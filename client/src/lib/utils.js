@@ -56,6 +56,32 @@ export function getStockBadge(stockActual, stockMinimo) {
 }
 
 /**
+ * Normaliza texto para búsqueda: quita acentos/diacríticos, pasa a minúsculas
+ * y recorta espacios. "Galón" → "galon", "NIÑO" → "nino".
+ */
+export function normalizarTexto(str) {
+  return (str ?? '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // elimina acentos y diacríticos
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Compara una búsqueda contra uno o más campos ignorando acentos, mayúsculas y
+ * orden de palabras. La búsqueda se parte en palabras y TODAS deben aparecer
+ * (en cualquier campo, en cualquier orden). Así "galon usado" encuentra
+ * "Galones usados".
+ */
+export function coincideBusqueda(query, ...campos) {
+  const q = normalizarTexto(query);
+  if (!q) return true;
+  const texto = normalizarTexto(campos.filter(Boolean).join(' '));
+  return q.split(/\s+/).every((palabra) => texto.includes(palabra));
+}
+
+/**
  * Combine class names, filtering falsy values
  */
 export function cn(...classes) {

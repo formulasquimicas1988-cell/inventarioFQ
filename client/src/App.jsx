@@ -18,6 +18,7 @@ import Danados from './pages/Danados'
 import Auditoria from './pages/Auditoria'
 import Caja from './pages/Caja'
 import VentasAdmin from './pages/VentasAdmin'
+import Apartados from './pages/Apartados'
 
 // Redirige a la ruta home según el rol
 function HomeRedirect() {
@@ -55,6 +56,7 @@ function InventarioRoutes() {
         <Route path="danados" element={<Danados />} />
         <Route path="alertas" element={<Alertas />} />
         <Route path="reportes" element={<Reportes />} />
+        <Route path="apartados" element={<Apartados />} />
         <Route path="auditoria" element={<Auditoria />} />
         {rol === 'admin' && <Route path="ventas" element={<VentasAdmin />} />}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

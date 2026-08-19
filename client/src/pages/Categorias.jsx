@@ -8,6 +8,7 @@ import SearchInput from '../components/ui/SearchInput';
 import SafeButton from '../components/ui/SafeButton';
 import PageLoader from '../components/ui/PageLoader';
 import EmptyState from '../components/ui/EmptyState';
+import { coincideBusqueda } from '../lib/utils';
 
 export default function Categorias() {
   const { success, error } = useToast();
@@ -91,13 +92,7 @@ export default function Categorias() {
     }
   };
 
-  const filtered = categorias.filter((c) => {
-    const q = search.toLowerCase();
-    return (
-      !q ||
-      (c.nombre || '').toLowerCase().includes(q)
-    );
-  });
+  const filtered = categorias.filter((c) => coincideBusqueda(search, c.nombre));
 
   return (
     <div>

@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Tag, ArrowDownCircle, ArrowUpCircle,
   SlidersHorizontal, History, Bell, FileBarChart2, ChevronLeft, ChevronRight,
-  PackageX, ShieldCheck, ShoppingCart, ClipboardList
+  PackageX, ShieldCheck, ShoppingCart, ClipboardList, Bookmark
 } from 'lucide-react'
 import { useAlerts } from '../context/AlertContext'
 import { useUser } from '../context/UserContext'
@@ -17,6 +17,7 @@ const INVENTARIO_ITEMS = [
   { path: '/ajustes', label: 'Ajustes', icon: SlidersHorizontal },
   { path: '/historial', label: 'Historial', icon: History },
   { path: '/danados', label: 'Dañados', icon: PackageX },
+  { path: '/apartados', label: 'Apartados', icon: Bookmark },
   { path: '/alertas', label: 'Alertas', icon: Bell, hasAlert: true },
   { path: '/reportes', label: 'Reportes', icon: FileBarChart2 },
   { path: '/auditoria', label: 'Auditoría', icon: ShieldCheck, adminOnly: true },

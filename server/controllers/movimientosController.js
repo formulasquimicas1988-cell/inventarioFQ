@@ -1,6 +1,7 @@
 const pool = require('../db');
 const { logAudit, getClientIp } = require('../lib/audit');
 const { nowHN } = require('../lib/timeUtils');
+const { buildSearch } = require('../lib/search');
 
 // Helper: build paginated query
 async function paginated(baseQuery, countQuery, params, page, limit) {
@@ -34,9 +35,8 @@ const getHistorial = async (req, res) => {
       params.push(fecha_fin);
     }
     if (search && search.trim()) {
-      where.push('(p.nombre LIKE ? OR p.codigo LIKE ? OR m.cliente LIKE ? OR m.tipo LIKE ? OR m.proveedor LIKE ?)');
-      const s = `%${search.trim()}%`;
-      params.push(s, s, s, s, s);
+      const { clause, params: sp } = buildSearch(search, ['p.nombre', 'p.codigo', 'm.cliente', 'm.tipo', 'm.proveedor']);
+      if (clause) { where.push(clause); params.push(...sp); }
     }
 
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
@@ -71,9 +71,8 @@ const getEntradas = async (req, res) => {
     let where = ['m.tipo = ?', 'm.cancelado = 0'];
 
     if (search && search.trim()) {
-      where.push('(p.nombre LIKE ? OR p.codigo LIKE ? OR m.proveedor LIKE ?)');
-      const s = `%${search.trim()}%`;
-      params.push(s, s, s);
+      const { clause, params: sp } = buildSearch(search, ['p.nombre', 'p.codigo', 'm.proveedor']);
+      if (clause) { where.push(clause); params.push(...sp); }
     }
 
     const whereClause = 'WHERE ' + where.join(' AND ');
@@ -123,9 +122,8 @@ const getSalidas = async (req, res) => {
     let where = ['m.tipo = ?', 'm.cancelado = 0'];
 
     if (search && search.trim()) {
-      where.push('(p.nombre LIKE ? OR p.codigo LIKE ? OR m.cliente LIKE ?)');
-      const s = `%${search.trim()}%`;
-      params.push(s, s, s);
+      const { clause, params: sp } = buildSearch(search, ['p.nombre', 'p.codigo', 'm.cliente']);
+      if (clause) { where.push(clause); params.push(...sp); }
     }
 
     const whereClause = 'WHERE ' + where.join(' AND ');
@@ -158,9 +156,8 @@ const getAjustes = async (req, res) => {
     let where = ['m.tipo = ?', 'm.cancelado = 0'];
 
     if (search && search.trim()) {
-      where.push('(p.nombre LIKE ? OR p.codigo LIKE ?)');
-      const s = `%${search.trim()}%`;
-      params.push(s, s);
+      const { clause, params: sp } = buildSearch(search, ['p.nombre', 'p.codigo']);
+      if (clause) { where.push(clause); params.push(...sp); }
     }
 
     const whereClause = 'WHERE ' + where.join(' AND ');
@@ -358,9 +355,8 @@ const getDanados = async (req, res) => {
     let where = ['m.tipo = ?', 'm.cancelado = 0'];
 
     if (search && search.trim()) {
-      where.push('(p.nombre LIKE ? OR p.codigo LIKE ? OR m.notas LIKE ?)');
-      const s = `%${search.trim()}%`;
-      params.push(s, s, s);
+      const { clause, params: sp } = buildSearch(search, ['p.nombre', 'p.codigo', 'm.notas']);
+      if (clause) { where.push(clause); params.push(...sp); }
     }
 
     const whereClause = 'WHERE ' + where.join(' AND ');
@@ -457,6 +453,11 @@ const cancelarMovimiento = async (req, res) => {
     if (mov.venta_id) {
       await conn.rollback();
       return res.status(400).json({ error: 'Este movimiento pertenece a una venta. Para revertirlo, anule la venta correspondiente.' });
+    }
+
+    if (mov.apartado_id) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Este movimiento pertenece a un apartado. Para revertirlo, cancele el apartado correspondiente.' });
     }
 
     // Calcular el delta inverso según el tipo de movimiento

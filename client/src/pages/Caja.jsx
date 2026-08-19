@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Minus, Trash2, ShoppingCart, Clock, History,
-  Printer, X, Check, LogOut, Star, ChevronDown, AlertCircle, Tag
+  Printer, X, Check, LogOut, Star, ChevronDown, AlertCircle, Tag, Bookmark
 } from 'lucide-react';
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
+import { coincideBusqueda, normalizarTexto } from '../lib/utils';
+import { imprimirTicket, imprimirApartado } from '../lib/print';
 
 // ── Utilidades ──────────────────────────────────────────────────────────────
 
@@ -13,101 +15,6 @@ const fmt = (v) => `L ${parseFloat(v || 0).toFixed(2)}`;
 
 function genId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function imprimirTicket(ticket, esCopia = false) {
-  const num = ticket.numero_ticket ?? ticket.id;
-
-  const fecha = new Date(ticket.fecha);
-  const fechaStr = fecha.toLocaleDateString('es-MX', { timeZone: 'America/Tegucigalpa', day: '2-digit', month: '2-digit', year: 'numeric' });
-  const horaStr  = fecha.toLocaleTimeString('es-MX', { timeZone: 'America/Tegucigalpa', hour: '2-digit', minute: '2-digit', hour12: true });
-
-  const detalles = ticket.items.map(i => `
-    <table class="fila">
-      <tr><td class="izq producto">${i.descripcion}</td></tr>
-    </table>
-    <table class="fila detalle">
-      <tr>
-        <td class="izq">${parseFloat(i.cantidad)} x L ${parseFloat(i.precio_unitario).toFixed(2)}</td>
-        <td class="der bold">L ${parseFloat(i.subtotal).toFixed(2)}</td>
-      </tr>
-    </table>
-    <div class="linea"></div>
-  `).join('');
-
-  const html = `<!DOCTYPE html>
-<html lang="es"><head>
-<meta charset="UTF-8">
-<title>Ticket #${num}</title>
-<style>
-  @page{size:80mm auto;margin:0}
-  @media print{body{margin:0;padding:0}}
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:monospace;font-size:12px;line-height:1.3}
-  .ticket{width:64mm;margin:0 auto;padding:6mm 3mm 6mm 3mm}
-  .center{text-align:center}
-  .bold{font-weight:bold}
-  .title{font-size:18px;font-weight:bold;margin-bottom:2px}
-  .subtitle{font-size:11px;margin-bottom:6px}
-  .fecha{font-size:15px;font-weight:bold;margin-bottom:8px}
-  .linea{border-top:1px dashed #000;margin:5px 0}
-  .fila{width:100%;border-collapse:collapse;margin-bottom:3px}
-  .fila td{padding:1px 0;vertical-align:top}
-  .fila .izq{text-align:left;width:60%}
-  .fila .der{text-align:right;width:40%;padding-right:2mm}
-  .totales .izq{text-align:left;width:45%}
-  .totales .der{text-align:right;width:55%;padding-right:2mm}
-  .producto{font-size:14px;font-weight:bold}
-  .detalle{font-size:13px}
-  .totales{font-size:15px;font-weight:bold}
-  .mensaje{margin-top:12px;font-size:14px;font-weight:bold}
-</style>
-</head><body>
-<div class="ticket">
-
-  ${esCopia ? `
-    <div class="center title">TICKET COPIA</div>
-    <div class="center title">(No Válido para entrega)</div>
-    <div class="center subtitle">(Ticket original #${num})</div>
-  ` : `
-    <div class="center title">TICKET #${num}</div>
-  `}
-
-  <div class="center fecha">${fechaStr} • ${horaStr}</div>
-
-  ${ticket.nombreCliente ? `<div class="center" style="font-size:13px;font-weight:bold;margin:4px 0;">Cliente: ${ticket.nombreCliente}</div>` : ''}
-
-  <div class="linea"></div>
-
-  ${detalles}
-
-  <table class="fila totales">
-    <tr><td class="izq">Total:</td><td class="der">L ${parseFloat(ticket.total).toFixed(2)}</td></tr>
-  </table>
-  ${ticket.efectivo != null ? `
-  <table class="fila totales">
-    <tr><td class="izq">Efectivo:</td><td class="der">L ${parseFloat(ticket.efectivo).toFixed(2)}</td></tr>
-  </table>` : ''}
-  ${ticket.cambio != null ? `
-  <table class="fila totales">
-    <tr><td class="izq">Cambio:</td><td class="der">L ${parseFloat(ticket.cambio).toFixed(2)}</td></tr>
-  </table>` : ''}
-
-  <div class="center mensaje">¡Gracias por su compra!<br>¡Vuelva pronto!</div>
-</div>
-<script>
-  window.onload = function() { setTimeout(() => window.print(), 200); };
-  window.onafterprint = function() { window.close(); };
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') window.print();
-    if (e.key === 'Escape') window.close();
-  });
-</script>
-</body></html>`;
-
-  const win = window.open('', '_blank', 'width=340,height=600');
-  win.document.write(html);
-  win.document.close();
 }
 
 // ── Sub-componentes ──────────────────────────────────────────────────────────
@@ -120,7 +27,7 @@ function VariantesModal({ variantes, todosProductos, onSelect, onClose }) {
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const filtradas = busq.trim()
-    ? variantes.filter(v => v.nombre.toLowerCase().includes(busq.toLowerCase()))
+    ? variantes.filter(v => coincideBusqueda(busq, v.nombre))
     : variantes;
 
   return (
@@ -383,16 +290,50 @@ function HistorialModal({ onClose, onVerDetalle }) {
   const [fecha, setFecha] = useState(hoyStr);
   const [ventas, setVentas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [busq, setBusq] = useState('');
 
+  // Traer TODAS las ventas del día, paginando hasta agotar los resultados
+  // (el servidor limita cada página, así que iteramos por todas las páginas).
   useEffect(() => {
+    let cancelado = false;
     setLoading(true);
-    api.get('/api/ventas', { params: { fecha_inicio: fecha, fecha_fin: fecha, limit: 100 } })
-      .then(res => setVentas(Array.isArray(res.data?.data) ? res.data.data : []))
-      .catch(() => setVentas([]))
-      .finally(() => setLoading(false));
+    setBusq('');
+    (async () => {
+      try {
+        const todas = [];
+        let page = 1;
+        const limit = 200;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const res = await api.get('/api/ventas', {
+            params: { fecha_inicio: fecha, fecha_fin: fecha, limit, page },
+          });
+          const lote = Array.isArray(res.data?.data) ? res.data.data : [];
+          todas.push(...lote);
+          const totalPages = res.data?.totalPages || 1;
+          if (page >= totalPages || lote.length === 0) break;
+          page++;
+        }
+        if (!cancelado) setVentas(todas);
+      } catch {
+        if (!cancelado) setVentas([]);
+      } finally {
+        if (!cancelado) setLoading(false);
+      }
+    })();
+    return () => { cancelado = true; };
   }, [fecha]);
 
   const esHoy = fecha === hoyStr;
+
+  const ventasFiltradas = busq.trim()
+    ? ventas.filter(v => coincideBusqueda(
+        busq,
+        String(v.numero_ticket ?? v.id),
+        v.nombre_cliente || '',
+        v.vendedor || '',
+      ))
+    : ventas;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -423,12 +364,29 @@ function HistorialModal({ onClose, onVerDetalle }) {
           )}
         </div>
 
+        {/* Buscador dentro del día */}
+        <div className="px-5 pb-2 flex-shrink-0">
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={busq}
+              onChange={e => setBusq(e.target.value)}
+              placeholder="Buscar por #ticket, cliente o vendedor..."
+              className="w-full min-h-[38px] pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
+        </div>
+
         <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
           {loading && <p className="text-center text-slate-400 py-6 text-sm">Cargando...</p>}
           {!loading && ventas.length === 0 && (
             <p className="text-center text-slate-400 py-6 text-sm">No hay ventas este día</p>
           )}
-          {!loading && ventas.map(v => (
+          {!loading && ventas.length > 0 && ventasFiltradas.length === 0 && (
+            <p className="text-center text-slate-400 py-6 text-sm">Sin resultados para "{busq}"</p>
+          )}
+          {!loading && ventasFiltradas.map(v => (
             <button
               key={v.id}
               onClick={() => onVerDetalle(v)}
@@ -440,6 +398,7 @@ function HistorialModal({ onClose, onVerDetalle }) {
                   <span className="font-semibold text-slate-800">Ticket #{v.numero_ticket ?? v.id}</span>
                   {!!v.anulada && <span className="ml-2 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Anulada</span>}
                   {v.nombre_cliente && <p className="text-xs text-slate-500">{v.nombre_cliente}</p>}
+                  {v.vendedor && <p className="text-[11px] text-slate-400">Vendedor: {v.vendedor}</p>}
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-brand-blue">{fmt(v.total)}</p>
@@ -453,12 +412,408 @@ function HistorialModal({ onClose, onVerDetalle }) {
         </div>
         <div className="px-4 pb-4 pt-2 border-t flex-shrink-0">
           <p className="text-sm text-slate-500 text-center">
-            {!loading && `${ventas.filter(v => !v.anulada).length} venta(s) · ${fmt(ventas.filter(v => !v.anulada).reduce((s, v) => s + parseFloat(v.total), 0))}`}
+            {!loading && `${ventas.filter(v => !v.anulada).length} venta(s)`}
           </p>
         </div>
       </div>
     </div>
   );
+}
+
+/** Modal para crear un apartado a partir del carrito actual */
+function ApartarModal({ carrito, total, usuario, usuarioId, onCreado, onClose }) {
+  const [nombreCliente, setNombreCliente] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [notas, setNotas] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const clienteRef = useRef(null);
+  const uidRef = useRef(null);
+
+  useEffect(() => { clienteRef.current?.focus(); }, []);
+
+  const guardar = async () => {
+    if (!nombreCliente.trim()) { setError('El nombre del cliente es obligatorio'); return; }
+    if (!usuarioId) { setError('Sesión sin ID de usuario. Cierra sesión y vuelve a entrar.'); return; }
+    setError('');
+    setGuardando(true);
+    if (!uidRef.current) uidRef.current = crypto.randomUUID?.() ?? genId();
+    try {
+      const res = await api.post('/api/apartados', {
+        usuario_id: usuarioId,
+        usuario,
+        nombre_cliente: nombreCliente.trim(),
+        telefono: telefono.trim() || null,
+        notas: notas.trim() || null,
+        client_uid: uidRef.current,
+        items: carrito.map(i => ({
+          producto_id: i.producto_id,
+          descripcion: i.descripcion,
+          cantidad: i.cantidad,
+          precio_unitario: i.precio_unitario,
+          subtotal: i.subtotal,
+          sin_inventario: i.sin_inventario,
+        })),
+      });
+      onCreado({
+        id: res.data.id,
+        numero: res.data.id,
+        nombreCliente: nombreCliente.trim(),
+        telefono: telefono.trim() || null,
+        total,
+        fecha: new Date(),
+        items: [...carrito],
+      });
+    } catch (err) {
+      setError(err.message || 'Error al registrar el apartado');
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
+          <h2 className="font-bold text-brand-blue flex items-center gap-2"><Bookmark size={18} /> Apartar productos</h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
+        </div>
+        <div className="px-5 py-4 flex flex-col gap-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+            Los productos se descuentan del stock como <strong>apartado</strong>. El cliente paga el total al retirar (ahí se genera el ticket).
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Nombre del cliente *</label>
+            <input
+              ref={clienteRef}
+              type="text"
+              value={nombreCliente}
+              onChange={e => { setNombreCliente(e.target.value); setError(''); }}
+              placeholder="Nombre de quien aparta"
+              className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Teléfono (opcional)</label>
+            <input
+              type="tel"
+              value={telefono}
+              onChange={e => setTelefono(e.target.value)}
+              placeholder="Para avisarle"
+              className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Notas (opcional)</label>
+            <input
+              type="text"
+              value={notas}
+              onChange={e => setNotas(e.target.value)}
+              placeholder="Referencia, seña, etc."
+              className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+            />
+          </div>
+          <div className="bg-slate-50 rounded-lg px-4 py-3 flex justify-between items-center">
+            <span className="text-sm text-slate-500">Total a apartar</span>
+            <span className="text-xl font-bold text-brand-blue">{fmt(total)}</span>
+          </div>
+          {error && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+              <AlertCircle size={16} className="flex-shrink-0 mt-0.5" /><span>{error}</span>
+            </div>
+          )}
+          <button
+            onClick={guardar}
+            disabled={guardando}
+            className="w-full min-h-[48px] bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+          >
+            {guardando ? 'Guardando...' : (<><Bookmark size={18} /> Confirmar apartado</>)}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Modal de gestión de apartados (listar, entregar, cancelar) */
+function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
+  const [estado, setEstado] = useState('activo');
+  const [busq, setBusq] = useState('');
+  const [apartados, setApartados] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sel, setSel] = useState(null);          // detalle del apartado abierto
+  const [accion, setAccion] = useState(null);     // 'entregar' | 'cancelar'
+  const [efectivo, setEfectivo] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [procesando, setProcesando] = useState(false);
+  const [error, setError] = useState('');
+
+  const cargar = useCallback(() => {
+    setLoading(true);
+    api.get('/api/apartados', { params: { estado, search: busq.trim() || undefined, limit: 200 } })
+      .then(res => setApartados(Array.isArray(res.data?.data) ? res.data.data : []))
+      .catch(() => setApartados([]))
+      .finally(() => setLoading(false));
+  }, [estado, busq]);
+
+  // Debounce: recarga desde el servidor al cambiar estado o búsqueda
+  useEffect(() => {
+    const t = setTimeout(cargar, 250);
+    return () => clearTimeout(t);
+  }, [cargar]);
+
+  const abrirDetalle = async (a) => {
+    setAccion(null); setError(''); setEfectivo(''); setMotivo('');
+    try {
+      const res = await api.get(`/api/apartados/${a.id}`);
+      setSel(res.data);
+    } catch {
+      setError('No se pudo cargar el apartado');
+    }
+  };
+
+  const filtrados = apartados;
+
+  const confirmarEntrega = async () => {
+    setProcesando(true); setError('');
+    try {
+      const res = await api.put(`/api/apartados/${sel.id}/entregar`, {
+        usuario_id: usuarioId,
+        usuario,
+        efectivo_recibido: efectivo !== '' ? parseFloat(efectivo) : null,
+      });
+      imprimirTicket({
+        id: res.data.venta_id,
+        numero_ticket: res.data.numero_ticket,
+        items: (sel.detalles || []).map(d => ({
+          descripcion: d.descripcion, cantidad: d.cantidad,
+          precio_unitario: d.precio_unitario, subtotal: d.subtotal,
+        })),
+        total: res.data.total,
+        cambio: res.data.cambio,
+        efectivo: res.data.efectivo,
+        nombreCliente: sel.nombre_cliente,
+        fecha: new Date(),
+      });
+      setSel(null); setAccion(null); setEfectivo('');
+      onStockChange?.();
+      cargar();
+    } catch (err) {
+      setError(err.message || 'Error al entregar el apartado');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const confirmarCancelacion = async () => {
+    setProcesando(true); setError('');
+    try {
+      await api.put(`/api/apartados/${sel.id}/cancelar`, { usuario, motivo: motivo.trim() || null });
+      setSel(null); setAccion(null); setMotivo('');
+      onStockChange?.();
+      cargar();
+    } catch (err) {
+      setError(err.message || 'Error al cancelar el apartado');
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const saldoEfectivo = efectivo !== '' ? parseFloat(efectivo) - parseFloat(sel?.total || 0) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
+          <h2 className="font-bold text-brand-blue flex items-center gap-2">
+            {sel ? <button onClick={() => { setSel(null); setAccion(null); }} className="text-slate-400 hover:text-slate-700">←</button> : <Bookmark size={18} />}
+            {sel ? `Apartado #${sel.id}` : 'Apartados'}
+          </h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
+        </div>
+
+        {!sel ? (
+          <>
+            {/* Filtros */}
+            <div className="px-5 pt-3 pb-2 flex-shrink-0 space-y-2">
+              <div className="flex gap-1.5">
+                {[['activo','Activos'],['entregado','Entregados'],['cancelado','Cancelados'],['all','Todos']].map(([val,label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setEstado(val)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors
+                      ${estado === val ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >{label}</button>
+                ))}
+              </div>
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={busq}
+                  onChange={e => setBusq(e.target.value)}
+                  placeholder="Buscar por #, cliente, teléfono o producto..."
+                  className="w-full min-h-[38px] pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
+                />
+              </div>
+            </div>
+            {/* Lista */}
+            <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
+              {loading && <p className="text-center text-slate-400 py-6 text-sm">Cargando...</p>}
+              {!loading && filtrados.length === 0 && (
+                <p className="text-center text-slate-400 py-6 text-sm">No hay apartados</p>
+              )}
+              {!loading && filtrados.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => abrirDetalle(a)}
+                  className={`w-full text-left p-3 rounded-xl border transition-colors hover:bg-slate-50
+                    ${a.estado === 'cancelado' ? 'border-slate-200 opacity-60'
+                      : a.estado === 'entregado' ? 'border-green-200 bg-green-50'
+                      : 'border-amber-200 bg-amber-50'}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-slate-800">#{a.id} · {a.nombre_cliente}</span>
+                      {a.telefono && <p className="text-xs text-slate-500">Tel: {a.telefono}</p>}
+                      <EstadoBadge estado={a.estado} />
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-bold text-brand-blue">{fmt(a.total)}</p>
+                      <p className="text-xs text-slate-400">
+                        {new Date(a.fecha).toLocaleDateString('es-MX', { timeZone: 'America/Tegucigalpa', day: '2-digit', month: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          /* Detalle del apartado */
+          <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-slate-800">{sel.nombre_cliente}</p>
+                {sel.telefono && <p className="text-xs text-slate-500">Tel: {sel.telefono}</p>}
+                {sel.creado_por && <p className="text-[11px] text-slate-400">Creado por: {sel.creado_por}</p>}
+              </div>
+              <EstadoBadge estado={sel.estado} />
+            </div>
+            {sel.notas && <p className="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2">{sel.notas}</p>}
+
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <tbody>
+                  {(sel.detalles || []).map(d => (
+                    <tr key={d.id} className="border-b border-slate-50 last:border-0">
+                      <td className="px-3 py-2 text-slate-800">{d.descripcion}</td>
+                      <td className="px-2 py-2 text-right text-slate-500">{parseFloat(d.cantidad)} × {fmt(d.precio_unitario)}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{fmt(d.subtotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-between font-bold text-lg">
+              <span>Total</span><span className="text-brand-blue">{fmt(sel.total)}</span>
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+                <AlertCircle size={16} className="flex-shrink-0 mt-0.5" /><span>{error}</span>
+              </div>
+            )}
+
+            {sel.estado === 'activo' && accion === null && (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  onClick={() => imprimirApartado({ id: sel.id, numero: sel.id, nombreCliente: sel.nombre_cliente, telefono: sel.telefono, total: sel.total, fecha: sel.fecha, items: sel.detalles })}
+                  className="col-span-2 min-h-[42px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl flex items-center justify-center gap-2"
+                >
+                  <Printer size={16} /> Reimprimir comprobante
+                </button>
+                <button
+                  onClick={() => { setAccion('cancelar'); setError(''); }}
+                  className="min-h-[46px] bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-xl"
+                >
+                  Cancelar apartado
+                </button>
+                <button
+                  onClick={() => { setAccion('entregar'); setError(''); }}
+                  className="min-h-[46px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl flex items-center justify-center gap-2"
+                >
+                  <Check size={18} /> Entregar
+                </button>
+              </div>
+            )}
+
+            {sel.estado === 'activo' && accion === 'entregar' && (
+              <div className="space-y-2 pt-1 border-t">
+                <p className="text-sm font-medium text-slate-700">Cobrar y entregar — genera el ticket</p>
+                <label className="block text-xs text-slate-500">Efectivo recibido (opcional)</label>
+                <input
+                  type="number" value={efectivo} min="0" step="0.01" placeholder="0.00"
+                  onChange={e => setEfectivo(e.target.value)}
+                  className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+                />
+                {saldoEfectivo != null && (
+                  <p className={`text-sm font-semibold ${saldoEfectivo < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {saldoEfectivo < 0 ? `Faltan ${fmt(Math.abs(saldoEfectivo))}` : `Cambio: ${fmt(saldoEfectivo)}`}
+                  </p>
+                )}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setAccion(null)} className="flex-1 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl">Volver</button>
+                  <button onClick={confirmarEntrega} disabled={procesando} className="flex-1 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl">
+                    {procesando ? '...' : 'Confirmar entrega'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {sel.estado === 'activo' && accion === 'cancelar' && (
+              <div className="space-y-2 pt-1 border-t">
+                <p className="text-sm font-medium text-slate-700">Cancelar apartado — se restaura el stock</p>
+                <input
+                  type="text" value={motivo} onChange={e => setMotivo(e.target.value)}
+                  placeholder="Motivo (opcional)"
+                  className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
+                />
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setAccion(null)} className="flex-1 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl">Volver</button>
+                  <button onClick={confirmarCancelacion} disabled={procesando} className="flex-1 min-h-[44px] bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold rounded-xl">
+                    {procesando ? '...' : 'Confirmar cancelación'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {sel.estado === 'entregado' && (
+              <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700">
+                Entregado{sel.venta_id ? ` — Venta #${sel.venta_id}` : ''}.
+              </div>
+            )}
+            {sel.estado === 'cancelado' && (
+              <div className="bg-slate-100 rounded-lg px-3 py-2 text-sm text-slate-600">
+                Cancelado{sel.motivo_cancelacion ? `: ${sel.motivo_cancelacion}` : ''}.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Badge de estado de apartado */
+function EstadoBadge({ estado }) {
+  const map = {
+    activo: 'bg-amber-100 text-amber-700',
+    entregado: 'bg-green-100 text-green-700',
+    cancelado: 'bg-slate-200 text-slate-600',
+  };
+  const label = { activo: 'Activo', entregado: 'Entregado', cancelado: 'Cancelado' }[estado] || estado;
+  return <span className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${map[estado] || 'bg-slate-100 text-slate-600'}`}>{label}</span>;
 }
 
 /** Modal detalle de venta (solo lectura, para historial de caja) */
@@ -540,10 +895,7 @@ function PreciosModal({ productos, onClose, onGuardado }) {
   const [exito, setExito] = useState('');
 
   const filtrados = busq.trim()
-    ? productos.filter(p =>
-        p.nombre.toLowerCase().includes(busq.toLowerCase()) ||
-        p.codigo.toLowerCase().includes(busq.toLowerCase())
-      )
+    ? productos.filter(p => coincideBusqueda(busq, p.nombre, p.codigo))
     : productos;
 
   const abrirEdicion = (p) => {
@@ -744,6 +1096,8 @@ export default function Caja() {
   const [enEsperaModal, setEnEsperaModal] = useState(false);
   const [historialModal, setHistorialModal] = useState(false);
   const [preciosModal, setPreciosModal] = useState(false);
+  const [apartarModal, setApartarModal] = useState(false);
+  const [apartadosModal, setApartadosModal] = useState(false);
 
   const carritoRef = useRef(null);
   const carritoStateRef = useRef([]);
@@ -803,15 +1157,12 @@ export default function Caja() {
 
   const productosFiltrados = busqueda.trim()
     ? (() => {
-        const q = busqueda.trim().toLowerCase();
+        const q = normalizarTexto(busqueda);
         return productos
-          .filter(p =>
-            p.nombre.toLowerCase().includes(q) ||
-            p.codigo.toLowerCase().includes(q)
-          )
+          .filter(p => coincideBusqueda(busqueda, p.nombre, p.codigo))
           .sort((a, b) => {
-            const aStarts = a.nombre.toLowerCase().startsWith(q);
-            const bStarts = b.nombre.toLowerCase().startsWith(q);
+            const aStarts = normalizarTexto(a.nombre).startsWith(q);
+            const bStarts = normalizarTexto(b.nombre).startsWith(q);
             if (aStarts && !bStarts) return -1;
             if (!aStarts && bStarts) return 1;
             return 0;
@@ -971,6 +1322,17 @@ export default function Caja() {
     }
   };
 
+  // ── Apartar ───────────────────────────────────────────────────────────────
+
+  const handleApartadoCreado = (apartado) => {
+    setApartarModal(false);
+    setCarrito([]);
+    setNombreCliente('');
+    setEfectivo('');
+    cargarProductos(true); // el stock ya bajó por el apartado
+    imprimirApartado(apartado);
+  };
+
   // ── Cobrar ────────────────────────────────────────────────────────────────
 
   const cobrar = useCallback(async () => {
@@ -1049,7 +1411,7 @@ export default function Caja() {
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== 'Enter') return;
-      const modalAbierto = variantesModal || enEsperaModal || historialModal || ventaDetalle;
+      const modalAbierto = variantesModal || enEsperaModal || historialModal || ventaDetalle || apartarModal || apartadosModal;
       if (modalAbierto) return;
       const active = document.activeElement;
       const tag = active?.tagName;
@@ -1060,7 +1422,7 @@ export default function Caja() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [variantesModal, enEsperaModal, historialModal, ventaDetalle, cobrar]);
+  }, [variantesModal, enEsperaModal, historialModal, ventaDetalle, apartarModal, apartadosModal, cobrar]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1111,6 +1473,14 @@ export default function Caja() {
           >
             <History size={16} />
             <span className="hidden sm:block">Historial</span>
+          </button>
+
+          <button
+            onClick={() => setApartadosModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 text-sm transition-colors"
+          >
+            <Bookmark size={16} />
+            <span className="hidden sm:block">Apartados</span>
           </button>
 
           <button
@@ -1329,6 +1699,16 @@ export default function Caja() {
                 </>
               )}
             </button>
+
+            {/* Botón apartar */}
+            <button
+              onClick={() => setApartarModal(true)}
+              disabled={carrito.length === 0 || cobrando}
+              className="w-full min-h-[44px] bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              <Bookmark size={18} />
+              Apartar (reservar sin cobrar)
+            </button>
           </div>
         </div>
 
@@ -1482,6 +1862,26 @@ export default function Caja() {
         <HistorialModal
           onClose={() => { setHistorialModal(false); setVentaDetalle(null); }}
           onVerDetalle={verDetalleVenta}
+        />
+      )}
+
+      {apartarModal && (
+        <ApartarModal
+          carrito={carrito}
+          total={total}
+          usuario={usuario}
+          usuarioId={usuarioId}
+          onCreado={handleApartadoCreado}
+          onClose={() => setApartarModal(false)}
+        />
+      )}
+
+      {apartadosModal && (
+        <ApartadosModal
+          usuario={usuario}
+          usuarioId={usuarioId}
+          onClose={() => setApartadosModal(false)}
+          onStockChange={() => cargarProductos(true)}
         />
       )}
 

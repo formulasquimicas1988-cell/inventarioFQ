@@ -47,6 +47,7 @@ app.use('/api/reportes', require('./routes/reportes'));
 app.use('/api/alertas', require('./routes/alertas'));
 app.use('/api/auditoria', require('./routes/auditoria'));
 app.use('/api/ventas', require('./routes/ventas'));
+app.use('/api/apartados', require('./routes/apartados'));
 
 // Health check (must be before the SPA catch-all)
 app.get('/api/health', (req, res) => {
@@ -82,6 +83,69 @@ const pool = require('./db');
     if (err.code !== 'ER_DUP_KEYNAME') {
       console.error('Migración client_uid (índice):', err.message);
     }
+  }
+
+  // ── Migración: sección de Apartados ──────────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS apartados (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        usuario_id INT NOT NULL,
+        nombre_cliente VARCHAR(255) NOT NULL,
+        telefono VARCHAR(50) DEFAULT NULL,
+        estado VARCHAR(20) NOT NULL DEFAULT 'activo',
+        total DECIMAL(12,2) NOT NULL DEFAULT 0,
+        notas TEXT DEFAULT NULL,
+        venta_id INT DEFAULT NULL,
+        motivo_cancelacion VARCHAR(255) DEFAULT NULL,
+        fecha DATETIME NOT NULL,
+        fecha_entrega DATETIME DEFAULT NULL,
+        fecha_cancelacion DATETIME DEFAULT NULL,
+        client_uid VARCHAR(36) DEFAULT NULL,
+        UNIQUE KEY idx_apartados_client_uid (client_uid),
+        KEY idx_apartados_estado (estado)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS detalle_apartados (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        apartado_id INT NOT NULL,
+        producto_id INT DEFAULT NULL,
+        descripcion VARCHAR(255) NOT NULL DEFAULT '',
+        cantidad DECIMAL(12,2) NOT NULL DEFAULT 0,
+        precio_unitario DECIMAL(12,2) NOT NULL DEFAULT 0,
+        subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,
+        sin_inventario TINYINT(1) NOT NULL DEFAULT 0,
+        KEY idx_detalle_apartados_apartado (apartado_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    console.log('✔ Migración: tablas apartados / detalle_apartados listas');
+  } catch (err) {
+    console.error('Migración apartados (tablas):', err.message);
+  }
+
+  // Columna apartado_id en movimientos (idempotente)
+  try {
+    await pool.query('ALTER TABLE movimientos ADD COLUMN apartado_id INT DEFAULT NULL');
+    console.log('✔ Migración: columna apartado_id agregada a movimientos');
+  } catch (err) {
+    if (err.code !== 'ER_DUP_FIELDNAME') {
+      console.error('Migración apartado_id (columna):', err.message);
+    }
+  }
+
+  // Asegurar que movimientos.tipo acepte 'apartado' (si es ENUM, ampliarlo a VARCHAR)
+  try {
+    const [cols] = await pool.query(
+      `SELECT DATA_TYPE FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'movimientos' AND COLUMN_NAME = 'tipo'`
+    );
+    if (cols.length && cols[0].DATA_TYPE.toLowerCase() === 'enum') {
+      await pool.query("ALTER TABLE movimientos MODIFY COLUMN tipo VARCHAR(20) NOT NULL");
+      console.log('✔ Migración: movimientos.tipo convertido a VARCHAR (acepta apartado)');
+    }
+  } catch (err) {
+    console.error('Migración movimientos.tipo:', err.message);
   }
 })();
 

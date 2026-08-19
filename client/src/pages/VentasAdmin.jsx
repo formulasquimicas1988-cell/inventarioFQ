@@ -3,7 +3,7 @@ import { Search, Eye, XCircle, Pencil, AlertCircle, Check, Trash2, Plus } from '
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../context/ToastContext';
-import { formatDate } from '../lib/utils';
+import { formatDate, coincideBusqueda } from '../lib/utils';
 import Pagination from '../components/ui/Pagination';
 import PageLoader from '../components/ui/PageLoader';
 import Modal from '../components/ui/Modal';
@@ -186,7 +186,7 @@ function EditDetalleModal({ detalle, ventaId, usuarioId, onSaved, onClose }) {
   }, []);
 
   const prodsFiltrados = busqProd.trim()
-    ? productos.filter(p => p.nombre.toLowerCase().includes(busqProd.toLowerCase()) || p.codigo.toLowerCase().includes(busqProd.toLowerCase()))
+    ? productos.filter(p => coincideBusqueda(busqProd, p.nombre, p.codigo))
     : productos;
 
   const subtotal = (parseFloat(nuevaCant) || 0) * (parseFloat(nuevoPrecio) || 0);
@@ -335,7 +335,7 @@ function AgregarDetalleModal({ ventaId, usuarioId, onSaved, onClose }) {
   }, []);
 
   const prodsFiltrados = busqProd.trim()
-    ? productos.filter(p => p.nombre.toLowerCase().includes(busqProd.toLowerCase()) || p.codigo.toLowerCase().includes(busqProd.toLowerCase()))
+    ? productos.filter(p => coincideBusqueda(busqProd, p.nombre, p.codigo))
     : productos;
 
   const subtotal = (parseFloat(cant) || 0) * (parseFloat(precio) || 0);

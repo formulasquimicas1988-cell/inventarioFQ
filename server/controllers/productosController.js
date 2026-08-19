@@ -1,6 +1,7 @@
 const pool = require('../db');
 const XLSX = require('xlsx');
 const { logAudit, getClientIp } = require('../lib/audit');
+const { buildSearch } = require('../lib/search');
 
 // GET /api/productos
 const getAll = async (req, res) => {
@@ -16,11 +17,10 @@ const getAll = async (req, res) => {
       params.push(parseInt(activo));
     }
 
-    // search filter
+    // search filter (varias palabras, cualquier orden)
     if (search && search.trim()) {
-      where.push('(p.codigo LIKE ? OR p.nombre LIKE ? OR c.nombre LIKE ?)');
-      const s = `%${search.trim()}%`;
-      params.push(s, s, s);
+      const { clause, params: sp } = buildSearch(search, ['p.codigo', 'p.nombre', 'c.nombre', 'c2.nombre']);
+      if (clause) { where.push(clause); params.push(...sp); }
     }
 
     // categoria filter (busca en categoria_id o categoria_id_2)

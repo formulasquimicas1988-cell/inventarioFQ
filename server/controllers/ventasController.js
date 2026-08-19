@@ -1,6 +1,7 @@
 const pool = require('../db');
 const { logAudit, getClientIp } = require('../lib/audit');
 const { nowHN } = require('../lib/timeUtils');
+const { buildSearch } = require('../lib/search');
 
 // GET /api/ventas
 const getAll = async (req, res) => {
@@ -23,9 +24,8 @@ const getAll = async (req, res) => {
       params.push(fecha_fin);
     }
     if (search && search.trim()) {
-      where.push('(v.id LIKE ? OR v.nombre_cliente LIKE ? OR u.nombre LIKE ?)');
-      const s = `%${search.trim()}%`;
-      params.push(s, s, s);
+      const { clause, params: sp } = buildSearch(search, ['v.id', 'v.nombre_cliente', 'u.nombre']);
+      if (clause) { where.push(clause); params.push(...sp); }
     }
 
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
