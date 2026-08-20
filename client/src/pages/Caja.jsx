@@ -1098,6 +1098,7 @@ export default function Caja() {
   const [preciosModal, setPreciosModal] = useState(false);
   const [apartarModal, setApartarModal] = useState(false);
   const [apartadosModal, setApartadosModal] = useState(false);
+  const [apartadoMsg, setApartadoMsg] = useState('');
 
   const carritoRef = useRef(null);
   const carritoStateRef = useRef([]);
@@ -1332,6 +1333,8 @@ export default function Caja() {
     cargarProductos(true); // el stock ya bajó por el apartado
     // No se imprime al apartar: el comprobante se imprime a demanda desde
     // el detalle del apartado (botón "Comprobante").
+    setApartadoMsg('Apartado guardado — stock reservado');
+    setTimeout(() => setApartadoMsg(''), 3500);
   };
 
   // ── Cobrar ────────────────────────────────────────────────────────────────
@@ -1915,6 +1918,14 @@ export default function Caja() {
           onClose={() => setPreciosModal(false)}
           onGuardado={() => cargarProductos(true)}
         />
+      )}
+
+      {/* Aviso flotante al apartar (abajo, se desvanece solo) */}
+      {apartadoMsg && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-amber-500 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold flex items-center gap-2">
+          <Bookmark size={16} />
+          {apartadoMsg}
+        </div>
       )}
 
     </div>
