@@ -294,11 +294,8 @@ function CrearApartadoModal({ usuario, usuarioId, onClose, onCreado }) {
           sin_inventario: i.sin_inventario,
         })),
       });
-      imprimirApartado({
-        id: res.data.id, numero: res.data.id,
-        nombreCliente: nombreCliente.trim(), telefono: telefono.trim() || null,
-        total, fecha: new Date(), items: carrito,
-      });
+      // No se imprime al apartar (los pedidos suelen llegar por teléfono/WhatsApp);
+      // el comprobante se imprime a demanda desde el detalle del apartado.
       onCreado();
     } catch (err) {
       setError(err.message || 'Error al registrar el apartado');

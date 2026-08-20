@@ -1324,13 +1324,14 @@ export default function Caja() {
 
   // ── Apartar ───────────────────────────────────────────────────────────────
 
-  const handleApartadoCreado = (apartado) => {
+  const handleApartadoCreado = () => {
     setApartarModal(false);
     setCarrito([]);
     setNombreCliente('');
     setEfectivo('');
     cargarProductos(true); // el stock ya bajó por el apartado
-    imprimirApartado(apartado);
+    // No se imprime al apartar: el comprobante se imprime a demanda desde
+    // el detalle del apartado (botón "Comprobante").
   };
 
   // ── Cobrar ────────────────────────────────────────────────────────────────
