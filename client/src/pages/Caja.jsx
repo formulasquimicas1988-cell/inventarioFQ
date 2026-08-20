@@ -7,7 +7,7 @@ import {
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { coincideBusqueda, normalizarTexto } from '../lib/utils';
-import { imprimirTicket, imprimirApartado } from '../lib/print';
+import { imprimirTicket } from '../lib/print';
 
 // ── Utilidades ──────────────────────────────────────────────────────────────
 
@@ -727,12 +727,6 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
 
             {sel.estado === 'activo' && accion === null && (
               <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  onClick={() => imprimirApartado({ id: sel.id, numero: sel.id, nombreCliente: sel.nombre_cliente, telefono: sel.telefono, total: sel.total, fecha: sel.fecha, items: sel.detalles })}
-                  className="col-span-2 min-h-[42px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl flex items-center justify-center gap-2"
-                >
-                  <Printer size={16} /> Reimprimir comprobante
-                </button>
                 <button
                   onClick={() => { setAccion('cancelar'); setError(''); }}
                   className="min-h-[46px] bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-xl"

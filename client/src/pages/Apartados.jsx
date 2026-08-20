@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Search, Eye, Check, XCircle, Printer, Bookmark, AlertCircle, Plus, Minus, X, Trash2 } from 'lucide-react';
+import { Search, Eye, Check, XCircle, Bookmark, AlertCircle, Plus, Minus, X, Trash2 } from 'lucide-react';
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../context/ToastContext';
 import { formatDate, coincideBusqueda } from '../lib/utils';
-import { imprimirTicket, imprimirApartado } from '../lib/print';
+import { imprimirTicket } from '../lib/print';
 import Pagination from '../components/ui/Pagination';
 import PageLoader from '../components/ui/PageLoader';
 import Modal from '../components/ui/Modal';
@@ -99,16 +99,6 @@ function DetalleModal({ apartado, onClose, onEntregar, onCancelar, procesando, p
 
         {/* Acciones */}
         <div className="flex flex-wrap justify-end gap-3 pt-2 border-t">
-          <button
-            onClick={() => imprimirApartado({
-              id: apartado.id, numero: apartado.id, nombreCliente: apartado.nombre_cliente,
-              telefono: apartado.telefono, total: apartado.total, fecha: apartado.fecha, items: apartado.detalles,
-            })}
-            className="min-h-[40px] px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium flex items-center gap-2"
-          >
-            <Printer size={16} /> Comprobante
-          </button>
-
           {apartado.estado === 'activo' && accion === null && (
             <>
               <button
