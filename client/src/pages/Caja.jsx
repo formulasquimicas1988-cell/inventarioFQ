@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Minus, Trash2, ShoppingCart, Clock, History,
-  Printer, X, Check, LogOut, Star, ChevronDown, AlertCircle, Tag, Bookmark
+  Printer, X, Check, LogOut, Star, ChevronDown, AlertCircle, Tag, Bookmark, Pencil
 } from 'lucide-react';
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { coincideBusqueda, normalizarTexto } from '../lib/utils';
 import { imprimirTicket } from '../lib/print';
+import ApartadoEditorModal from '../components/ApartadoEditorModal';
 
 // ── Utilidades ──────────────────────────────────────────────────────────────
 
@@ -546,6 +547,7 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
   const [motivo, setMotivo] = useState('');
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState('');
+  const [editando, setEditando] = useState(false);
 
   const cargar = useCallback(() => {
     setLoading(true);
@@ -554,6 +556,14 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
       .catch(() => setApartados([]))
       .finally(() => setLoading(false));
   }, [estado, busq]);
+
+  const recargarSel = async () => {
+    if (!sel) return;
+    try {
+      const res = await api.get(`/api/apartados/${sel.id}`);
+      setSel(res.data);
+    } catch {}
+  };
 
   // Debounce: recarga desde el servidor al cambiar estado o búsqueda
   useEffect(() => {
@@ -621,6 +631,7 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
   const saldoEfectivo = efectivo !== '' ? parseFloat(efectivo) - parseFloat(sel?.total || 0) : null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
         {/* Header */}
@@ -728,6 +739,12 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
             {sel.estado === 'activo' && accion === null && (
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
+                  onClick={() => { setEditando(true); setError(''); }}
+                  className="col-span-2 min-h-[42px] bg-blue-100 hover:bg-blue-200 text-blue-700 font-semibold rounded-xl flex items-center justify-center gap-2"
+                >
+                  <Pencil size={16} /> Editar apartado
+                </button>
+                <button
                   onClick={() => { setAccion('cancelar'); setError(''); }}
                   className="min-h-[46px] bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-xl"
                 >
@@ -796,6 +813,22 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
         )}
       </div>
     </div>
+
+    {editando && sel && (
+      <ApartadoEditorModal
+        existente={sel}
+        usuario={usuario}
+        usuarioId={usuarioId}
+        onClose={() => setEditando(false)}
+        onSaved={async () => {
+          setEditando(false);
+          await recargarSel();
+          onStockChange?.();
+          cargar();
+        }}
+      />
+    )}
+    </>
   );
 }
 

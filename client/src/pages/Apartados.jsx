@@ -1,14 +1,15 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Search, Eye, Check, XCircle, Bookmark, AlertCircle, Plus, Minus, X, Trash2 } from 'lucide-react';
+import { Search, Eye, Check, XCircle, Bookmark, Plus, Pencil, AlertCircle } from 'lucide-react';
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../context/ToastContext';
-import { formatDate, coincideBusqueda } from '../lib/utils';
+import { formatDate } from '../lib/utils';
 import { imprimirTicket } from '../lib/print';
 import Pagination from '../components/ui/Pagination';
 import PageLoader from '../components/ui/PageLoader';
 import Modal from '../components/ui/Modal';
 import SafeButton from '../components/ui/SafeButton';
+import ApartadoEditorModal from '../components/ApartadoEditorModal';
 
 const fmt = (v) => `L ${parseFloat(v || 0).toFixed(2)}`;
 
@@ -29,7 +30,7 @@ function EstadoBadge({ estado }) {
 
 // ── Modal detalle / acciones ──────────────────────────────────────────────────
 
-function DetalleModal({ apartado, onClose, onEntregar, onCancelar, procesando, puedeEntregar }) {
+function DetalleModal({ apartado, onClose, onEntregar, onCancelar, onEditar, procesando, puedeEntregar }) {
   const [accion, setAccion] = useState(null);     // 'entregar' | 'cancelar'
   const [efectivo, setEfectivo] = useState('');
   const [motivo, setMotivo] = useState('');
@@ -102,6 +103,12 @@ function DetalleModal({ apartado, onClose, onEntregar, onCancelar, procesando, p
           {apartado.estado === 'activo' && accion === null && (
             <>
               <button
+                onClick={() => onEditar(apartado)}
+                className="min-h-[40px] px-4 py-2 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium flex items-center gap-2"
+              >
+                <Pencil size={16} /> Editar
+              </button>
+              <button
                 onClick={() => setAccion('cancelar')}
                 className="min-h-[40px] px-4 py-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center gap-2"
               >
@@ -171,266 +178,6 @@ function DetalleModal({ apartado, onClose, onEntregar, onCancelar, procesando, p
   );
 }
 
-// ── Modal crear apartado ───────────────────────────────────────────────────────
-
-function genId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function CrearApartadoModal({ usuario, usuarioId, onClose, onCreado }) {
-  const [productos, setProductos] = useState([]);
-  const [busq, setBusq] = useState('');
-  const [carrito, setCarrito] = useState([]);
-  const [nombreCliente, setNombreCliente] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [notas, setNotas] = useState('');
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState('');
-  const uidRef = useRef(null);
-
-  useEffect(() => {
-    api.get('/api/productos', { params: { limit: 1000, activo: 1 } })
-      .then(res => {
-        const data = res.data;
-        setProductos(Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []));
-      })
-      .catch(() => {});
-  }, []);
-
-  // Stock efectivo (resuelve alias con producto_base_id)
-  const stockDe = (prod) => {
-    if (!prod || prod.sin_inventario) return Infinity;
-    if (prod.producto_base_id) {
-      const base = productos.find(p => p.id === prod.producto_base_id);
-      if (base) return base.stock_actual ?? 0;
-    }
-    return prod.stock_actual ?? 0;
-  };
-
-  const filtrados = busq.trim()
-    ? productos.filter(p => coincideBusqueda(busq, p.nombre, p.codigo)).slice(0, 30)
-    : [];
-
-  const agregar = (prod) => {
-    setError('');
-    setCarrito(prev => {
-      const ex = prev.find(i => i.producto_id === prod.id);
-      if (ex) {
-        if (!prod.sin_inventario && ex.cantidad + 1 > stockDe(prod)) {
-          setError(`Sin stock suficiente de "${prod.nombre}" (hay ${stockDe(prod)}).`);
-          return prev;
-        }
-        return prev.map(i => i._id === ex._id
-          ? { ...i, cantidad: i.cantidad + 1, subtotal: (i.cantidad + 1) * i.precio_unitario }
-          : i);
-      }
-      if (!prod.sin_inventario && stockDe(prod) <= 0) {
-        setError(`"${prod.nombre}" no tiene stock disponible.`);
-        return prev;
-      }
-      const precio = parseFloat(prod.precio_a ?? prod.precio_b ?? prod.precio_c ?? prod.precio_d ?? 0) || 0;
-      return [...prev, {
-        _id: genId(), producto_id: prod.id, descripcion: prod.nombre,
-        cantidad: 1, precio_unitario: precio, subtotal: precio,
-        sin_inventario: prod.sin_inventario ? 1 : 0,
-      }];
-    });
-    setBusq('');
-  };
-
-  const cambiarCantidad = (_id, val) => {
-    const item = carrito.find(i => i._id === _id);
-    const prod = productos.find(p => p.id === item?.producto_id);
-    let nueva = Math.max(1, Math.round(parseFloat(val) || 1));
-    if (prod && !item.sin_inventario && nueva > stockDe(prod)) {
-      setError(`Solo hay ${stockDe(prod)} de "${prod.nombre}".`);
-      nueva = stockDe(prod);
-    } else {
-      setError('');
-    }
-    setCarrito(prev => prev.map(i => i._id === _id ? { ...i, cantidad: nueva, subtotal: nueva * i.precio_unitario } : i));
-  };
-
-  const cambiarPrecio = (_id, val) => {
-    const precio = parseFloat(val) || 0;
-    setCarrito(prev => prev.map(i => i._id === _id ? { ...i, precio_unitario: precio, subtotal: i.cantidad * precio } : i));
-  };
-
-  const quitar = (_id) => setCarrito(prev => prev.filter(i => i._id !== _id));
-
-  const total = carrito.reduce((s, i) => s + parseFloat(i.subtotal || 0), 0);
-
-  const guardar = async () => {
-    if (!carrito.length) { setError('Agregá al menos un producto'); return; }
-    if (!nombreCliente.trim()) { setError('El nombre del cliente es obligatorio'); return; }
-    if (!usuarioId) { setError('Sesión sin ID de usuario. Cierra sesión y vuelve a entrar.'); return; }
-    setError('');
-    setGuardando(true);
-    if (!uidRef.current) uidRef.current = crypto.randomUUID?.() ?? genId();
-    try {
-      const res = await api.post('/api/apartados', {
-        usuario_id: usuarioId,
-        usuario,
-        nombre_cliente: nombreCliente.trim(),
-        telefono: telefono.trim() || null,
-        notas: notas.trim() || null,
-        client_uid: uidRef.current,
-        items: carrito.map(i => ({
-          producto_id: i.producto_id,
-          descripcion: i.descripcion,
-          cantidad: i.cantidad,
-          precio_unitario: i.precio_unitario,
-          subtotal: i.subtotal,
-          sin_inventario: i.sin_inventario,
-        })),
-      });
-      // No se imprime al apartar (los pedidos suelen llegar por teléfono/WhatsApp);
-      // el comprobante se imprime a demanda desde el detalle del apartado.
-      onCreado();
-    } catch (err) {
-      setError(err.message || 'Error al registrar el apartado');
-      setGuardando(false);
-    }
-  };
-
-  return (
-    <Modal isOpen onClose={onClose} title="Nuevo apartado" size="lg">
-      <div className="flex flex-col gap-4">
-        {/* Datos del cliente */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Nombre del cliente *</label>
-            <input
-              type="text" value={nombreCliente}
-              onChange={e => { setNombreCliente(e.target.value); setError(''); }}
-              placeholder="Nombre de quien aparta"
-              className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Teléfono (opcional)</label>
-            <input
-              type="tel" value={telefono} onChange={e => setTelefono(e.target.value)}
-              placeholder="Para avisarle"
-              className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Notas (opcional)</label>
-          <input
-            type="text" value={notas} onChange={e => setNotas(e.target.value)}
-            placeholder="Referencia, seña, etc."
-            className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
-          />
-        </div>
-
-        {/* Buscador de productos */}
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Agregar productos</label>
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text" value={busq} onChange={e => setBusq(e.target.value)}
-              placeholder="Buscar producto por nombre o código..."
-              className="w-full min-h-[44px] pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-red"
-            />
-          </div>
-          {busq.trim() && (
-            <div className="mt-1 border border-slate-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-slate-100">
-              {filtrados.length === 0 && <p className="text-center text-slate-400 py-3 text-sm">Sin resultados</p>}
-              {filtrados.map(p => {
-                const stock = stockDe(p);
-                const sinStock = !p.sin_inventario && stock <= 0;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => !sinStock && agregar(p)}
-                    disabled={sinStock}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-left text-sm ${sinStock ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-50'}`}
-                  >
-                    <span className="text-slate-800">{p.nombre}</span>
-                    <span className="text-xs text-slate-400 flex items-center gap-2">
-                      {!p.sin_inventario && <span className={sinStock ? 'text-red-400 font-semibold' : ''}>Stock: {stock}</span>}
-                      <Plus size={14} className="text-brand-red" />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Carrito del apartado */}
-        {carrito.length > 0 && (
-          <div className="border border-slate-200 rounded-lg overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="text-left px-3 py-2 text-slate-500 font-medium">Producto</th>
-                  <th className="px-2 py-2 text-slate-500 font-medium text-center">Cant</th>
-                  <th className="px-2 py-2 text-slate-500 font-medium text-right">P.U.</th>
-                  <th className="px-2 py-2 text-slate-500 font-medium text-right">Subtotal</th>
-                  <th className="px-2 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {carrito.map(i => (
-                  <tr key={i._id} className="border-t border-slate-100">
-                    <td className="px-3 py-2 text-slate-800">{i.descripcion}</td>
-                    <td className="px-2 py-2">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => cambiarCantidad(i._id, i.cantidad - 1)} className="w-6 h-6 rounded border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-100"><Minus size={12} /></button>
-                        <input
-                          type="number" min="1" value={Math.round(i.cantidad)}
-                          onChange={e => cambiarCantidad(i._id, e.target.value)}
-                          className="w-12 h-7 text-center border border-slate-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-red"
-                        />
-                        <button onClick={() => cambiarCantidad(i._id, i.cantidad + 1)} className="w-6 h-6 rounded border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-100"><Plus size={12} /></button>
-                      </div>
-                    </td>
-                    <td className="px-2 py-2 text-right">
-                      <input
-                        type="number" min="0" step="0.01" value={i.precio_unitario}
-                        onChange={e => cambiarPrecio(i._id, e.target.value)}
-                        className="w-20 h-7 text-right border border-slate-200 rounded px-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand-red"
-                      />
-                    </td>
-                    <td className="px-2 py-2 text-right font-semibold text-slate-800">{fmt(i.subtotal)}</td>
-                    <td className="px-2 py-2 text-right">
-                      <button onClick={() => quitar(i._id)} className="p-1 text-red-400 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="bg-slate-50 rounded-lg px-4 py-3 flex justify-between items-center">
-          <span className="text-sm text-slate-500">Total a apartar</span>
-          <span className="text-xl font-bold text-brand-blue">{fmt(total)}</span>
-        </div>
-
-        {error && (
-          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
-            <AlertCircle size={16} className="flex-shrink-0 mt-0.5" /><span>{error}</span>
-          </div>
-        )}
-
-        <div className="flex justify-end gap-3 pt-2 border-t">
-          <button onClick={onClose} className="min-h-[44px] px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">Cancelar</button>
-          <SafeButton onClick={guardar} loading={guardando} variant="primary">
-            <Bookmark size={16} /> Confirmar apartado
-          </SafeButton>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// ── Página ─────────────────────────────────────────────────────────────────────
-
 export default function Apartados() {
   const { usuario, usuarioId, rol } = useUser();
   const { success, error } = useToast();
@@ -448,7 +195,8 @@ export default function Apartados() {
 
   const [detalle, setDetalle] = useState(null);
   const [procesando, setProcesando] = useState(false);
-  const [crearOpen, setCrearOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorExistente, setEditorExistente] = useState(null); // null = crear
 
   const searchDebounce = useRef(null);
 
@@ -547,7 +295,7 @@ export default function Apartados() {
         <div className="flex items-center gap-3">
           <p className="text-sm text-slate-500">{total} apartado(s)</p>
           <button
-            onClick={() => setCrearOpen(true)}
+            onClick={() => { setEditorExistente(null); setEditorOpen(true); }}
             className="min-h-[42px] px-4 py-2 rounded-lg bg-brand-red hover:bg-red-700 text-white text-sm font-semibold flex items-center gap-2"
           >
             <Plus size={16} /> Nuevo apartado
@@ -644,18 +392,20 @@ export default function Apartados() {
         onClose={() => setDetalle(null)}
         onEntregar={handleEntregar}
         onCancelar={handleCancelar}
+        onEditar={(a) => { setDetalle(null); setEditorExistente(a); setEditorOpen(true); }}
         procesando={procesando}
         puedeEntregar={puedeEntregar}
       />
 
-      {crearOpen && (
-        <CrearApartadoModal
+      {editorOpen && (
+        <ApartadoEditorModal
+          existente={editorExistente}
           usuario={usuario}
           usuarioId={usuarioId}
-          onClose={() => setCrearOpen(false)}
-          onCreado={() => {
-            setCrearOpen(false);
-            success('Apartado registrado — stock reservado');
+          onClose={() => setEditorOpen(false)}
+          onSaved={(msg) => {
+            setEditorOpen(false);
+            success(msg);
             fetchApartados(search, fechaInicio, fechaFin, estado, page);
           }}
         />

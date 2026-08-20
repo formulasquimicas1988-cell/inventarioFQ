@@ -232,6 +232,149 @@ const crearApartado = async (req, res) => {
   }
 };
 
+// PUT /api/apartados/:id — editar un apartado activo (cantidades, precios,
+// agregar/quitar productos, datos del cliente). Reconcilia el stock en una
+// sola transacción: restaura lo reservado y vuelve a descontar según los items
+// nuevos.
+const actualizarApartado = async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { id } = req.params;
+    const { nombre_cliente, telefono, notas, items, usuario } = req.body;
+
+    const [aps] = await conn.query('SELECT * FROM apartados WHERE id = ?', [id]);
+    if (aps.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Apartado no encontrado' });
+    }
+    const apartado = aps[0];
+    if (apartado.estado !== 'activo') {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Solo se pueden editar apartados activos' });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'El apartado debe tener al menos un producto' });
+    }
+
+    const nombreCliente = (nombre_cliente != null && nombre_cliente.trim())
+      ? nombre_cliente.trim()
+      : apartado.nombre_cliente;
+
+    // 1) Restaurar el stock de los movimientos actuales del apartado y borrarlos
+    const [movs] = await conn.query(
+      'SELECT * FROM movimientos WHERE apartado_id = ? AND (cancelado = 0 OR cancelado IS NULL)',
+      [id]
+    );
+    for (const mov of movs) {
+      await conn.query(
+        'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+        [parseInt(mov.cantidad), mov.producto_id]
+      );
+      await conn.query('DELETE FROM movimientos WHERE id = ?', [mov.id]);
+    }
+
+    // 2) Borrar los detalles actuales
+    await conn.query('DELETE FROM detalle_apartados WHERE apartado_id = ?', [id]);
+
+    // 3) Reinsertar los items nuevos y volver a descontar stock
+    const total = items.reduce((sum, item) => sum + parseFloat(item.subtotal || 0), 0);
+    for (const item of items) {
+      const { producto_id, descripcion, cantidad, precio_unitario, subtotal, sin_inventario } = item;
+
+      await conn.query(
+        `INSERT INTO detalle_apartados (apartado_id, producto_id, descripcion, cantidad, precio_unitario, subtotal, sin_inventario)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          producto_id || null,
+          descripcion || '',
+          parseFloat(cantidad) || 0,
+          parseFloat(precio_unitario) || 0,
+          parseFloat(subtotal) || 0,
+          sin_inventario ? 1 : 0,
+        ]
+      );
+
+      if (producto_id && !sin_inventario) {
+        const [prods] = await conn.query(
+          'SELECT id, stock_actual, producto_base_id FROM productos WHERE id = ? AND activo = 1',
+          [producto_id]
+        );
+        if (prods.length === 0) continue;
+
+        const stockProductId = prods[0].producto_base_id || prods[0].id;
+        const [baseProds] = await conn.query(
+          'SELECT id, stock_actual FROM productos WHERE id = ? FOR UPDATE',
+          [stockProductId]
+        );
+        if (baseProds.length === 0) continue;
+
+        const qty = Math.round(parseFloat(cantidad) || 0);
+        if (qty <= 0) continue;
+
+        const stockAnterior = parseInt(baseProds[0].stock_actual);
+        if (stockAnterior < qty) {
+          await conn.rollback();
+          return res.status(409).json({
+            error: `Stock insuficiente para "${descripcion}": hay ${stockAnterior} disponibles pero se necesitan ${qty}.`,
+          });
+        }
+
+        const stockResultante = stockAnterior - qty;
+        await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, stockProductId]);
+
+        await conn.query(
+          `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante,
+            cliente, notas, usuario, apartado_id, fecha)
+           VALUES (?, 'apartado', ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            stockProductId, qty, stockAnterior, stockResultante,
+            nombreCliente,
+            `Apartado #${id} (editado)`,
+            usuario || null,
+            id,
+            nowHN(),
+          ]
+        );
+      }
+    }
+
+    // 4) Actualizar cabecera del apartado
+    await conn.query(
+      'UPDATE apartados SET nombre_cliente = ?, telefono = ?, notas = ?, total = ? WHERE id = ?',
+      [
+        nombreCliente,
+        telefono !== undefined ? (telefono?.trim() || null) : apartado.telefono,
+        notas !== undefined ? (notas?.trim() || null) : apartado.notas,
+        total,
+        id,
+      ]
+    );
+
+    await conn.commit();
+
+    const ip = getClientIp(req);
+    await logAudit({
+      usuario,
+      accion: 'editó',
+      modulo: 'Apartado',
+      detalle: `Editó apartado #${id} — nuevo total L ${total.toFixed(2)}`,
+      ip,
+    });
+
+    res.json({ message: 'Apartado actualizado correctamente', total });
+  } catch (err) {
+    await conn.rollback();
+    console.error('actualizarApartado error:', err);
+    res.status(500).json({ error: 'Error al actualizar el apartado' });
+  } finally {
+    conn.release();
+  }
+};
+
 // PUT /api/apartados/:id/entregar — el cliente paga completo y se lleva la mercadería.
 // El stock ya se descontó al apartar; aquí NO se vuelve a descontar: se genera la
 // venta y se reconvierten los movimientos 'apartado' en 'salida' de esa venta.
@@ -394,4 +537,4 @@ const cancelarApartado = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getById, crearApartado, entregarApartado, cancelarApartado };
+module.exports = { getAll, getById, crearApartado, actualizarApartado, entregarApartado, cancelarApartado };
