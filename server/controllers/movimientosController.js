@@ -250,11 +250,15 @@ const createSalida = async (req, res) => {
     if (!qty || qty <= 0) return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
     if (!cliente || !cliente.trim()) return res.status(400).json({ error: 'El cliente es requerido' });
 
-    // Get current stock
-    const [products] = await conn.query('SELECT id, stock_actual, nombre FROM productos WHERE id = ? AND activo = 1', [producto_id]);
+    // Get current stock. Si el producto comparte stock con un base, descontar del base
+    const [products] = await conn.query('SELECT id, stock_actual, nombre, producto_base_id FROM productos WHERE id = ? AND activo = 1', [producto_id]);
     if (products.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const stockAnterior = parseInt(products[0].stock_actual);
+    const stockProductId = products[0].producto_base_id || products[0].id;
+    const [baseProducts] = await conn.query('SELECT id, stock_actual FROM productos WHERE id = ? FOR UPDATE', [stockProductId]);
+    if (baseProducts.length === 0) return res.status(404).json({ error: 'Producto base no encontrado' });
+
+    const stockAnterior = parseInt(baseProducts[0].stock_actual);
     if (qty > stockAnterior) {
       await conn.rollback();
       return res.status(400).json({
@@ -264,14 +268,14 @@ const createSalida = async (req, res) => {
 
     const stockResultante = stockAnterior - qty;
 
-    // Update stock
-    await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, producto_id]);
+    // Update stock del producto correcto (base o propio)
+    await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, stockProductId]);
 
-    // Insert movement
+    // Insert movement vinculado al producto cuyo stock se actualizó
     const [result] = await conn.query(
       `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, cliente, notas, usuario, fecha)
        VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?)`,
-      [producto_id, qty, stockAnterior, stockResultante, cliente.trim(), notas || null, usuario || null, nowHN()]
+      [stockProductId, qty, stockAnterior, stockResultante, cliente.trim(), notas || null, usuario || null, nowHN()]
     );
 
     await conn.commit();
@@ -394,10 +398,14 @@ const createDanado = async (req, res) => {
     if (!qty || qty <= 0) return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
     if (!notas || !notas.trim()) return res.status(400).json({ error: 'El motivo del daño es requerido' });
 
-    const [products] = await conn.query('SELECT id, stock_actual FROM productos WHERE id = ? AND activo = 1', [producto_id]);
+    const [products] = await conn.query('SELECT id, stock_actual, producto_base_id FROM productos WHERE id = ? AND activo = 1', [producto_id]);
     if (products.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const stockAnterior = parseInt(products[0].stock_actual);
+    const stockProductId = products[0].producto_base_id || products[0].id;
+    const [baseProducts] = await conn.query('SELECT id, stock_actual FROM productos WHERE id = ? FOR UPDATE', [stockProductId]);
+    if (baseProducts.length === 0) return res.status(404).json({ error: 'Producto base no encontrado' });
+
+    const stockAnterior = parseInt(baseProducts[0].stock_actual);
     if (qty > stockAnterior) {
       await conn.rollback();
       return res.status(400).json({
@@ -406,12 +414,12 @@ const createDanado = async (req, res) => {
     }
 
     const stockResultante = stockAnterior - qty;
-    await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, producto_id]);
+    await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockResultante, stockProductId]);
 
     const [result] = await conn.query(
       `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante, notas, usuario, fecha)
        VALUES (?, 'danado', ?, ?, ?, ?, ?, ?)`,
-      [producto_id, qty, stockAnterior, stockResultante, notas.trim(), usuario || null, nowHN()]
+      [stockProductId, qty, stockAnterior, stockResultante, notas.trim(), usuario || null, nowHN()]
     );
 
     await conn.commit();
@@ -479,8 +487,22 @@ const cancelarMovimiento = async (req, res) => {
       return res.status(400).json({ error: 'Tipo de movimiento no reconocido' });
     }
 
-    // Aplicar delta inverso al stock actual (no restaurar foto antigua)
-    await conn.query('UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?', [delta, mov.producto_id]);
+    // Aplicar delta inverso al stock actual (no restaurar foto antigua).
+    // Bloquear la fila y verificar que la reversión no deje el stock en negativo.
+    const [curProd] = await conn.query('SELECT stock_actual FROM productos WHERE id = ? FOR UPDATE', [mov.producto_id]);
+    if (curProd.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'El producto de este movimiento ya no existe' });
+    }
+    const stockNuevo = parseInt(curProd[0].stock_actual) + delta;
+    if (stockNuevo < 0) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: `No se puede cancelar este ${mov.tipo}: dejaría el stock en ${stockNuevo}. ` +
+               `Las unidades ya fueron vendidas o movidas. Registra un ajuste manual en su lugar.`
+      });
+    }
+    await conn.query('UPDATE productos SET stock_actual = ? WHERE id = ?', [stockNuevo, mov.producto_id]);
 
     // Soft-delete: marcar como cancelado (no borrar)
     await conn.query('UPDATE movimientos SET cancelado = 1, cancelado_en = NOW() WHERE id = ?', [req.params.id]);

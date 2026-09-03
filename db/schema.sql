@@ -70,6 +70,7 @@ CREATE TABLE ventas (
   usuario_id INT NOT NULL,
   nombre_cliente VARCHAR(200) DEFAULT NULL,
   total DECIMAL(10,2) NOT NULL,
+  metodo_pago VARCHAR(20) NOT NULL DEFAULT 'efectivo',
   efectivo_recibido DECIMAL(10,2) DEFAULT NULL,
   cambio DECIMAL(10,2) DEFAULT NULL,
   anulada TINYINT(1) DEFAULT 0,

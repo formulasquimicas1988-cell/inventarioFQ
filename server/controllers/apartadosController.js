@@ -407,9 +407,15 @@ const entregarApartado = async (req, res) => {
       return res.status(400).json({ error: 'El apartado no tiene productos' });
     }
 
+    // Método de pago: solo valores conocidos, por defecto efectivo.
+    const METODOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'credito'];
+    const metodoPago = METODOS_PAGO.includes(req.body.metodo_pago) ? req.body.metodo_pago : 'efectivo';
+    const esEfectivo = metodoPago === 'efectivo';
+
     const ventaUsuarioId = usuario_id || apartado.usuario_id;
     const total = parseFloat(apartado.total);
-    const efectivo = efectivo_recibido != null && efectivo_recibido !== '' ? parseFloat(efectivo_recibido) : null;
+    // Efectivo y cambio solo aplican cuando el pago es en efectivo.
+    const efectivo = esEfectivo && efectivo_recibido != null && efectivo_recibido !== '' ? parseFloat(efectivo_recibido) : null;
     const cambio = efectivo != null ? Math.max(0, efectivo - total) : null;
 
     // Crear la venta (sin tocar stock: ya fue descontado al apartar)
@@ -421,6 +427,9 @@ const entregarApartado = async (req, res) => {
     const ventaId = ventaResult.insertId;
     try {
       await conn.query('UPDATE ventas SET numero_ticket = ? WHERE id = ?', [ventaId, ventaId]);
+    } catch (_) { /* columna aún no migrada */ }
+    try {
+      await conn.query('UPDATE ventas SET metodo_pago = ? WHERE id = ?', [metodoPago, ventaId]);
     } catch (_) { /* columna aún no migrada */ }
 
     // Copiar los items del apartado a la venta

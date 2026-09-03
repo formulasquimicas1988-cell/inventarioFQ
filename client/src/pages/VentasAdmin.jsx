@@ -4,6 +4,7 @@ import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../context/ToastContext';
 import { formatDate, coincideBusqueda } from '../lib/utils';
+import { METODOS_PAGO, labelMetodoPago, colorMetodoPago } from '../lib/metodosPago';
 import Pagination from '../components/ui/Pagination';
 import PageLoader from '../components/ui/PageLoader';
 import Modal from '../components/ui/Modal';
@@ -13,10 +14,48 @@ const fmt = (v) => `L ${parseFloat(v || 0).toFixed(2)}`;
 
 // ── Modal detalle de venta ────────────────────────────────────────────────────
 
-function DetalleModal({ venta, onClose, onAnular, onEditDetalle, onDeleteDetalle, onAgregarDetalle, anulando, deletingId }) {
+function DetalleModal({ venta, usuarioId, onClose, onAnular, onEditDetalle, onDeleteDetalle, onAgregarDetalle, onMetodoActualizado, anulando, deletingId }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [metodo, setMetodo] = useState('efectivo');
+  const [guardandoMetodo, setGuardandoMetodo] = useState(false);
+  const [editEfectivo, setEditEfectivo] = useState(false);
+  const [efectivoInput, setEfectivoInput] = useState('');
 
   useEffect(() => { setConfirmDeleteId(null); }, [venta?.id]);
+  useEffect(() => {
+    setMetodo(venta?.metodo_pago || 'efectivo');
+    setEditEfectivo(false);
+  }, [venta?.id, venta?.metodo_pago]);
+
+  const aplicarMetodo = async (nuevo, efectivoRecibido = null) => {
+    if (!venta || guardandoMetodo || venta.anulada) return;
+    const previo = metodo;
+    setGuardandoMetodo(true);
+    try {
+      await api.put(`/api/ventas/${venta.id}/metodo-pago`, {
+        usuario_id: usuarioId, metodo_pago: nuevo, efectivo_recibido: efectivoRecibido,
+      });
+      setMetodo(nuevo); setEditEfectivo(false);
+      onMetodoActualizado?.(venta.id, nuevo);
+    } catch {
+      setMetodo(previo);
+    } finally {
+      setGuardandoMetodo(false);
+    }
+  };
+
+  const seleccionarMetodo = (nuevo) => {
+    if (!venta || venta.anulada) return;
+    if (nuevo === 'efectivo') {
+      setEfectivoInput(venta.efectivo_recibido != null ? String(venta.efectivo_recibido) : '');
+      setEditEfectivo(true);
+    } else {
+      setEditEfectivo(false);
+      aplicarMetodo(nuevo);
+    }
+  };
+
+  const cambioNuevo = efectivoInput !== '' ? parseFloat(efectivoInput) - parseFloat(venta?.total || 0) : null;
 
   return (
     <Modal isOpen={!!venta} onClose={onClose} title={`Venta #${venta?.id}`} size="lg">
@@ -132,8 +171,74 @@ function DetalleModal({ venta, onClose, onAnular, onEditDetalle, onDeleteDetalle
           <div className="bg-slate-50 rounded-lg px-4 py-3 space-y-1">
             <div className="flex justify-between font-bold text-base">
               <span>Total</span>
-              <span className="text-brand-blue">{fmt(venta.total)}</span>
+              <span className={colorMetodoPago(metodo)}>{fmt(venta.total)}</span>
             </div>
+            <div className="flex justify-between text-sm text-slate-500">
+              <span>Método de pago</span><span className={`font-medium ${colorMetodoPago(metodo)}`}>{labelMetodoPago(metodo)}</span>
+            </div>
+            {!venta.anulada && (
+              <div className="pt-1">
+                <p className="text-[11px] text-slate-400 mb-1">Cambiar método de pago</p>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {METODOS_PAGO.map(m => {
+                    const activo = (editEfectivo ? 'efectivo' : metodo) === m.value;
+                    return (
+                      <button
+                        key={m.value}
+                        type="button"
+                        disabled={guardandoMetodo}
+                        onClick={() => seleccionarMetodo(m.value)}
+                        className={`min-h-[34px] px-1 py-1 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50
+                          ${activo
+                            ? 'border-brand-red bg-red-50 text-brand-red'
+                            : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {editEfectivo && (
+                  <div className="mt-2 bg-white rounded-lg border border-slate-200 p-2 space-y-2">
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <label className="block text-[11px] text-slate-500 mb-1">Efectivo recibido</label>
+                        <input
+                          type="number" value={efectivoInput} min="0" step="0.01" placeholder="0.00"
+                          autoFocus
+                          onChange={e => setEfectivoInput(e.target.value)}
+                          className="w-full min-h-[40px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[11px] text-slate-500 mb-1">Cambio a dar</label>
+                        <div className={`min-h-[40px] px-3 py-2 rounded-lg border flex items-center justify-center font-bold
+                          ${cambioNuevo != null && cambioNuevo < 0
+                            ? 'border-red-300 bg-red-50 text-red-600'
+                            : 'border-slate-200 bg-slate-50 text-emerald-600'}`}
+                        >
+                          {cambioNuevo == null ? '—' : cambioNuevo < 0 ? `Faltan ${fmt(Math.abs(cambioNuevo))}` : fmt(cambioNuevo)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditEfectivo(false)}
+                        className="flex-1 min-h-[38px] rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                      >Cancelar</button>
+                      <button
+                        type="button"
+                        disabled={guardandoMetodo}
+                        onClick={() => aplicarMetodo('efectivo', efectivoInput !== '' ? parseFloat(efectivoInput) : null)}
+                        className="flex-1 min-h-[38px] rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold"
+                      >{guardandoMetodo ? '...' : 'Guardar efectivo'}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {venta.efectivo_recibido != null && (
               <div className="flex justify-between text-sm text-slate-500">
                 <span>Efectivo</span><span>{fmt(venta.efectivo_recibido)}</span>
@@ -637,6 +742,7 @@ export default function VentasAdmin() {
                     <th className="text-left py-3 px-3 text-slate-500 font-medium">Fecha</th>
                     <th className="text-left py-3 px-3 text-slate-500 font-medium">Cliente</th>
                     <th className="text-left py-3 px-3 text-slate-500 font-medium">Vendedor</th>
+                    <th className="text-left py-3 px-3 text-slate-500 font-medium">Pago</th>
                     <th className="text-right py-3 px-3 text-slate-500 font-medium">Total</th>
                     <th className="text-center py-3 px-3 text-slate-500 font-medium">Estado</th>
                     <th className="text-right py-3 px-3 text-slate-500 font-medium">Ver</th>
@@ -653,7 +759,8 @@ export default function VentasAdmin() {
                       <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap">{formatDate(v.fecha)}</td>
                       <td className="py-3 px-3 text-slate-700">{v.nombre_cliente || <span className="text-slate-400">—</span>}</td>
                       <td className="py-3 px-3 text-slate-600">{v.vendedor}</td>
-                      <td className="py-3 px-3 text-right font-bold text-brand-blue">{fmt(v.total)}</td>
+                      <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap">{labelMetodoPago(v.metodo_pago)}</td>
+                      <td className={`py-3 px-3 text-right font-bold ${colorMetodoPago(v.metodo_pago)}`}>{fmt(v.total)}</td>
                       <td className="py-3 px-3 text-center">
                         <span className={`text-xs font-semibold px-2 py-1 rounded-full
                           ${v.anulada
@@ -690,11 +797,16 @@ export default function VentasAdmin() {
       {/* Modal detalle */}
       <DetalleModal
         venta={ventaDetalle}
+        usuarioId={usuarioId}
         onClose={() => { setVentaDetalle(null); setShowMotivo(false); setMotivo(''); }}
         onAnular={handleAnular}
         onEditDetalle={(d) => setEditDetalleItem(d)}
         onDeleteDetalle={handleDeleteDetalle}
         onAgregarDetalle={() => setAgregarDetalleOpen(true)}
+        onMetodoActualizado={() => {
+          if (ventaDetalle) refrescarDetalle(ventaDetalle.id);
+          fetchVentas(search, fechaInicio, fechaFin, anuladas, page);
+        }}
         anulando={anulando}
         deletingId={deletingDetalleId}
       />

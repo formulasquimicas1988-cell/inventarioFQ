@@ -7,6 +7,7 @@ const estiloBase = `
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:monospace;font-size:12px;line-height:1.3}
   .ticket{width:64mm;margin:0 auto;padding:6mm 3mm 6mm 3mm}
+  .ticket + .ticket{page-break-before:always;break-before:page}
   .center{text-align:center}
   .bold{font-weight:bold}
   .title{font-size:18px;font-weight:bold;margin-bottom:2px}
@@ -25,19 +26,44 @@ const estiloBase = `
   .mensaje{margin-top:12px;font-size:14px;font-weight:bold}
 `;
 
-const scriptImpresion = `
-  window.onload = function() { setTimeout(() => window.print(), 200); };
-  window.onafterprint = function() { window.close(); };
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') window.print();
-    if (e.key === 'Escape') window.close();
-  });
-`;
+// Imprime dentro de un iframe oculto en la MISMA página (no abre ventana ni
+// pestaña que se pueda perder). El cuadro de impresión aparece sobre la Caja y,
+// al imprimir o cancelar, el iframe se elimina solo.
+function imprimirEnIframe(html) {
+  // Quitar cualquier iframe de impresión anterior que haya quedado
+  const previo = document.getElementById('__print_frame__');
+  if (previo) previo.remove();
 
-function abrirVentana(html) {
-  const win = window.open('', '_blank', 'width=340,height=600');
-  win.document.write(html);
-  win.document.close();
+  const iframe = document.createElement('iframe');
+  iframe.id = '__print_frame__';
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(iframe);
+
+  const win = iframe.contentWindow;
+  const doc = win.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  let limpiado = false;
+  const limpiar = () => {
+    if (limpiado) return;
+    limpiado = true;
+    // pequeño retraso para no interrumpir el envío a la impresora
+    setTimeout(() => { iframe.remove(); }, 500);
+  };
+
+  win.onafterprint = limpiar;
+  // Al cerrarse el cuadro de impresión el foco vuelve a la ventana principal:
+  // respaldo por si onafterprint no dispara en algún navegador.
+  window.addEventListener('focus', limpiar, { once: true });
+  // Respaldo final: nunca dejar el iframe acumulado.
+  setTimeout(limpiar, 60000);
+
+  // El ticket es HTML síncrono sin recursos externos; un breve instante
+  // asegura el render antes de abrir el cuadro de impresión.
+  setTimeout(() => { win.focus(); win.print(); }, 200);
 }
 
 function fechaHora(fecha) {
@@ -63,17 +89,11 @@ function filasItems(items) {
   `).join('');
 }
 
-// Ticket de venta
-export function imprimirTicket(ticket, esCopia = false) {
+// Cuerpo de un ticket de venta (solo el bloque .ticket, sin el <html>).
+function cuerpoTicket(ticket, esCopia = false) {
   const num = ticket.numero_ticket ?? ticket.id;
   const { fechaStr, horaStr } = fechaHora(ticket.fecha);
-
-  const html = `<!DOCTYPE html>
-<html lang="es"><head>
-<meta charset="UTF-8">
-<title>Ticket #${num}</title>
-<style>${estiloBase}</style>
-</head><body>
+  return `
 <div class="ticket">
   ${esCopia ? `
     <div class="center title">TICKET COPIA</div>
@@ -98,11 +118,34 @@ export function imprimirTicket(ticket, esCopia = false) {
     <tr><td class="izq">Cambio:</td><td class="der">L ${parseFloat(ticket.cambio).toFixed(2)}</td></tr>
   </table>` : ''}
   <div class="center mensaje">¡Gracias por su compra!<br>¡Vuelva pronto!</div>
-</div>
-<script>${scriptImpresion}</script>
-</body></html>`;
+</div>`;
+}
 
-  abrirVentana(html);
+// Envuelve uno o más cuerpos de ticket en un documento HTML imprimible.
+function documentoTicket(num, cuerpos) {
+  return `<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8">
+<title>Ticket #${num}</title>
+<style>${estiloBase}</style>
+</head><body>
+${cuerpos.join('\n')}
+</body></html>`;
+}
+
+// Imprime UN solo ticket (original o copia). Usado al reimprimir.
+export function imprimirTicket(ticket, esCopia = false) {
+  const num = ticket.numero_ticket ?? ticket.id;
+  imprimirEnIframe(documentoTicket(num, [cuerpoTicket(ticket, esCopia)]));
+}
+
+// Imprime el ticket ORIGINAL seguido de una COPIA en un solo trabajo de impresión.
+export function imprimirTicketConCopia(ticket) {
+  const num = ticket.numero_ticket ?? ticket.id;
+  imprimirEnIframe(documentoTicket(num, [
+    cuerpoTicket(ticket, false),
+    cuerpoTicket(ticket, true),
+  ]));
 }
 
 // Comprobante de apartado (reserva, NO es factura — pendiente de pago)
@@ -134,8 +177,7 @@ export function imprimirApartado(apartado) {
   </table>
   <div class="center mensaje">Producto reservado.<br>Pague el total al retirar.</div>
 </div>
-<script>${scriptImpresion}</script>
 </body></html>`;
 
-  abrirVentana(html);
+  imprimirEnIframe(html);
 }

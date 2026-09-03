@@ -103,9 +103,15 @@ const cobrarVenta = async (req, res) => {
       return res.status(400).json({ error: 'El carrito está vacío' });
     }
 
+    // Método de pago: solo se aceptan valores conocidos, por defecto efectivo.
+    const METODOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'credito'];
+    const metodoPago = METODOS_PAGO.includes(req.body.metodo_pago) ? req.body.metodo_pago : 'efectivo';
+    const esEfectivo = metodoPago === 'efectivo';
+
     // Calcular total desde los items (no confiar en el frontend)
     const total = items.reduce((sum, item) => sum + parseFloat(item.subtotal || 0), 0);
-    const efectivo = efectivo_recibido ? parseFloat(efectivo_recibido) : null;
+    // Efectivo y cambio solo aplican cuando el pago es en efectivo.
+    const efectivo = esEfectivo && efectivo_recibido ? parseFloat(efectivo_recibido) : null;
     const cambio = efectivo != null ? Math.max(0, efectivo - total) : null;
 
     // Insertar venta — numero_ticket se sincroniza con el id (AUTO_INCREMENT) después del insert.
@@ -154,6 +160,9 @@ const cobrarVenta = async (req, res) => {
     let numeroTicket = ventaId;
     try {
       await conn.query('UPDATE ventas SET numero_ticket = ? WHERE id = ?', [ventaId, ventaId]);
+    } catch (_) { /* columna aún no migrada */ }
+    try {
+      await conn.query('UPDATE ventas SET metodo_pago = ? WHERE id = ?', [metodoPago, ventaId]);
     } catch (_) { /* columna aún no migrada */ }
 
     // Procesar cada item
@@ -290,7 +299,7 @@ const anularVenta = async (req, res) => {
         delta = -(parseInt(mov.stock_resultante) - parseInt(mov.cantidad_anterior));
       }
       await conn.query(
-        'UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?',
+        'UPDATE productos SET stock_actual = GREATEST(stock_actual + ?, 0) WHERE id = ?',
         [delta, mov.producto_id]
       );
       await conn.query('DELETE FROM movimientos WHERE id = ?', [mov.id]);
@@ -621,4 +630,51 @@ const eliminarDetalle = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getById, cobrarVenta, anularVenta, editarDetalle, agregarDetalle, eliminarDetalle };
+// PUT /api/ventas/:id/metodo-pago — cambiar cómo se pagó una venta ya registrada
+// (p. ej. un crédito que el cliente vuelve a pagar). No crea otro módulo: solo
+// actualiza la etiqueta del método en la venta.
+const actualizarMetodoPago = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const METODOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'credito'];
+    if (!METODOS_PAGO.includes(req.body.metodo_pago)) {
+      return res.status(400).json({ error: 'Método de pago no válido' });
+    }
+    const metodoPago = req.body.metodo_pago;
+
+    const [ventas] = await pool.query('SELECT id, anulada, metodo_pago, total FROM ventas WHERE id = ?', [id]);
+    if (ventas.length === 0) return res.status(404).json({ error: 'Venta no encontrada' });
+    if (ventas[0].anulada) return res.status(400).json({ error: 'No se puede cambiar el método de una venta anulada' });
+
+    const anterior = ventas[0].metodo_pago || 'efectivo';
+
+    // El efectivo/cambio solo tiene sentido si el pago quedó en efectivo. Si mandan
+    // el efectivo recibido, se guarda y se calcula el cambio a devolver.
+    if (metodoPago === 'efectivo') {
+      const total = parseFloat(ventas[0].total || 0);
+      const efectivo = req.body.efectivo_recibido != null && req.body.efectivo_recibido !== ''
+        ? parseFloat(req.body.efectivo_recibido)
+        : null;
+      const cambio = efectivo != null ? Math.max(0, efectivo - total) : null;
+      await pool.query('UPDATE ventas SET metodo_pago = ?, efectivo_recibido = ?, cambio = ? WHERE id = ?', [metodoPago, efectivo, cambio, id]);
+    } else {
+      await pool.query('UPDATE ventas SET metodo_pago = ?, efectivo_recibido = NULL, cambio = NULL WHERE id = ?', [metodoPago, id]);
+    }
+
+    const ip = getClientIp(req);
+    await logAudit({
+      usuario: req.body?.usuario || null,
+      accion: 'cambió método de pago',
+      modulo: 'Venta',
+      detalle: `Venta #${id}: ${anterior} → ${metodoPago}`,
+      ip,
+    });
+
+    res.json({ message: 'Método de pago actualizado', metodo_pago: metodoPago });
+  } catch (err) {
+    console.error('actualizarMetodoPago error:', err);
+    res.status(500).json({ error: 'Error al actualizar el método de pago' });
+  }
+};
+
+module.exports = { getAll, getById, cobrarVenta, anularVenta, editarDetalle, agregarDetalle, eliminarDetalle, actualizarMetodoPago };

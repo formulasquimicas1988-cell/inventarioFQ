@@ -134,6 +134,16 @@ const pool = require('./db');
     }
   }
 
+  // Columna metodo_pago en ventas (efectivo por defecto). Idempotente.
+  try {
+    await pool.query("ALTER TABLE ventas ADD COLUMN metodo_pago VARCHAR(20) NOT NULL DEFAULT 'efectivo'");
+    console.log('✔ Migración: columna metodo_pago agregada a ventas');
+  } catch (err) {
+    if (err.code !== 'ER_DUP_FIELDNAME') {
+      console.error('Migración metodo_pago (columna):', err.message);
+    }
+  }
+
   // Asegurar que movimientos.tipo acepte 'apartado' (si es ENUM, ampliarlo a VARCHAR)
   try {
     const [cols] = await pool.query(

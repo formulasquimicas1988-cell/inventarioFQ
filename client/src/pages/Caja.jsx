@@ -7,7 +7,8 @@ import {
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { coincideBusqueda, normalizarTexto } from '../lib/utils';
-import { imprimirTicket } from '../lib/print';
+import { imprimirTicket, imprimirTicketConCopia } from '../lib/print';
+import { METODOS_PAGO, labelMetodoPago, colorMetodoPago } from '../lib/metodosPago';
 import ApartadoEditorModal from '../components/ApartadoEditorModal';
 
 // ── Utilidades ──────────────────────────────────────────────────────────────
@@ -286,7 +287,7 @@ function EnEsperaModal({ pendientes, onReanudar, onEliminar, onClose }) {
 }
 
 /** Modal historial del día */
-function HistorialModal({ onClose, onVerDetalle }) {
+function HistorialModal({ onClose, onVerDetalle, reloadSignal }) {
   const hoyStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Tegucigalpa' }); // YYYY-MM-DD
   const [fecha, setFecha] = useState(hoyStr);
   const [ventas, setVentas] = useState([]);
@@ -323,7 +324,7 @@ function HistorialModal({ onClose, onVerDetalle }) {
       }
     })();
     return () => { cancelado = true; };
-  }, [fecha]);
+  }, [fecha, reloadSignal]);
 
   const esHoy = fecha === hoyStr;
 
@@ -398,11 +399,12 @@ function HistorialModal({ onClose, onVerDetalle }) {
                 <div>
                   <span className="font-semibold text-slate-800">Ticket #{v.numero_ticket ?? v.id}</span>
                   {!!v.anulada && <span className="ml-2 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Anulada</span>}
+                  <span className="ml-2 text-[11px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{labelMetodoPago(v.metodo_pago)}</span>
                   {v.nombre_cliente && <p className="text-xs text-slate-500">{v.nombre_cliente}</p>}
                   {v.vendedor && <p className="text-[11px] text-slate-400">Vendedor: {v.vendedor}</p>}
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-brand-blue">{fmt(v.total)}</p>
+                  <p className={`font-bold ${colorMetodoPago(v.metodo_pago)}`}>{fmt(v.total)}</p>
                   <p className="text-xs text-slate-400">
                     {new Date(v.fecha).toLocaleTimeString('es-MX', { timeZone: 'America/Tegucigalpa', hour: '2-digit', minute: '2-digit', hour12: true })}
                   </p>
@@ -544,6 +546,7 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
   const [sel, setSel] = useState(null);          // detalle del apartado abierto
   const [accion, setAccion] = useState(null);     // 'entregar' | 'cancelar'
   const [efectivo, setEfectivo] = useState('');
+  const [metodoPago, setMetodoPago] = useState('efectivo');
   const [motivo, setMotivo] = useState('');
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState('');
@@ -572,7 +575,7 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
   }, [cargar]);
 
   const abrirDetalle = async (a) => {
-    setAccion(null); setError(''); setEfectivo(''); setMotivo('');
+    setAccion(null); setError(''); setEfectivo(''); setMetodoPago('efectivo'); setMotivo('');
     try {
       const res = await api.get(`/api/apartados/${a.id}`);
       setSel(res.data);
@@ -589,9 +592,10 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
       const res = await api.put(`/api/apartados/${sel.id}/entregar`, {
         usuario_id: usuarioId,
         usuario,
-        efectivo_recibido: efectivo !== '' ? parseFloat(efectivo) : null,
+        metodo_pago: metodoPago,
+        efectivo_recibido: metodoPago === 'efectivo' && efectivo !== '' ? parseFloat(efectivo) : null,
       });
-      imprimirTicket({
+      imprimirTicketConCopia({
         id: res.data.venta_id,
         numero_ticket: res.data.numero_ticket,
         items: (sel.detalles || []).map(d => ({
@@ -604,7 +608,7 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
         nombreCliente: sel.nombre_cliente,
         fecha: new Date(),
       });
-      setSel(null); setAccion(null); setEfectivo('');
+      setSel(null); setAccion(null); setEfectivo(''); setMetodoPago('efectivo');
       onStockChange?.();
       cargar();
     } catch (err) {
@@ -628,7 +632,8 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
     }
   };
 
-  const saldoEfectivo = efectivo !== '' ? parseFloat(efectivo) - parseFloat(sel?.total || 0) : null;
+  const entregaEsEfectivo = metodoPago === 'efectivo';
+  const saldoEfectivo = entregaEsEfectivo && efectivo !== '' ? parseFloat(efectivo) - parseFloat(sel?.total || 0) : null;
 
   return (
     <>
@@ -762,16 +767,36 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
             {sel.estado === 'activo' && accion === 'entregar' && (
               <div className="space-y-2 pt-1 border-t">
                 <p className="text-sm font-medium text-slate-700">Cobrar y entregar — genera el ticket</p>
-                <label className="block text-xs text-slate-500">Efectivo recibido (opcional)</label>
-                <input
-                  type="number" value={efectivo} min="0" step="0.01" placeholder="0.00"
-                  onChange={e => setEfectivo(e.target.value)}
-                  className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
-                />
-                {saldoEfectivo != null && (
-                  <p className={`text-sm font-semibold ${saldoEfectivo < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {saldoEfectivo < 0 ? `Faltan ${fmt(Math.abs(saldoEfectivo))}` : `Cambio: ${fmt(saldoEfectivo)}`}
-                  </p>
+                <label className="block text-xs text-slate-500">Método de pago</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {METODOS_PAGO.map(m => (
+                    <button
+                      key={m.value}
+                      type="button"
+                      onClick={() => setMetodoPago(m.value)}
+                      className={`min-h-[40px] px-2 py-1.5 rounded-lg border text-sm font-semibold transition-colors
+                        ${metodoPago === m.value
+                          ? 'border-brand-red bg-red-50 text-brand-red'
+                          : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                {entregaEsEfectivo && (
+                  <>
+                    <label className="block text-xs text-slate-500">Efectivo recibido (opcional)</label>
+                    <input
+                      type="number" value={efectivo} min="0" step="0.01" placeholder="0.00"
+                      onChange={e => setEfectivo(e.target.value)}
+                      className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+                    />
+                    {saldoEfectivo != null && (
+                      <p className={`text-sm font-semibold ${saldoEfectivo < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {saldoEfectivo < 0 ? `Faltan ${fmt(Math.abs(saldoEfectivo))}` : `Cambio: ${fmt(saldoEfectivo)}`}
+                      </p>
+                    )}
+                  </>
                 )}
                 <div className="flex gap-2 pt-1">
                   <button onClick={() => setAccion(null)} className="flex-1 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl">Volver</button>
@@ -844,7 +869,45 @@ function EstadoBadge({ estado }) {
 }
 
 /** Modal detalle de venta (solo lectura, para historial de caja) */
-function DetalleVentaModal({ venta, onClose, onReimprimir }) {
+function DetalleVentaModal({ venta, usuarioId, onClose, onReimprimir, onActualizado }) {
+  const [metodo, setMetodo] = useState(venta.metodo_pago || 'efectivo');
+  const [guardando, setGuardando] = useState(false);
+  const [errorMetodo, setErrorMetodo] = useState('');
+  const [editEfectivo, setEditEfectivo] = useState(false);
+  const [efectivoInput, setEfectivoInput] = useState('');
+
+  const aplicarMetodo = async (nuevo, efectivoRecibido = null) => {
+    if (guardando || venta.anulada) return;
+    const previo = metodo;
+    setGuardando(true); setErrorMetodo('');
+    try {
+      await api.put(`/api/ventas/${venta.id}/metodo-pago`, {
+        usuario_id: usuarioId, metodo_pago: nuevo, efectivo_recibido: efectivoRecibido,
+      });
+      setMetodo(nuevo); setEditEfectivo(false);
+      onActualizado?.(venta.id, nuevo);
+    } catch (err) {
+      setMetodo(previo);
+      setErrorMetodo(err.message || 'No se pudo cambiar el método');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const seleccionarMetodo = (nuevo) => {
+    if (venta.anulada) return;
+    setErrorMetodo('');
+    if (nuevo === 'efectivo') {
+      setEfectivoInput(venta.efectivo_recibido != null ? String(venta.efectivo_recibido) : '');
+      setEditEfectivo(true);
+    } else {
+      setEditEfectivo(false);
+      aplicarMetodo(nuevo);
+    }
+  };
+
+  const cambioNuevo = efectivoInput !== '' ? parseFloat(efectivoInput) - parseFloat(venta.total || 0) : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
@@ -880,8 +943,75 @@ function DetalleVentaModal({ venta, onClose, onReimprimir }) {
         <div className="px-5 py-4 border-t flex-shrink-0 space-y-1">
           <div className="flex justify-between font-bold text-lg">
             <span>Total</span>
-            <span className="text-brand-blue">{fmt(venta.total)}</span>
+            <span className={colorMetodoPago(metodo)}>{fmt(venta.total)}</span>
           </div>
+          <div className="flex justify-between items-center text-sm text-slate-500">
+            <span>Método de pago</span><span className={`font-medium ${colorMetodoPago(metodo)}`}>{labelMetodoPago(metodo)}</span>
+          </div>
+          {!venta.anulada && (
+            <div className="pt-1">
+              <p className="text-[11px] text-slate-400 mb-1">Cambiar método de pago</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {METODOS_PAGO.map(m => {
+                  const activo = (editEfectivo ? 'efectivo' : metodo) === m.value;
+                  return (
+                    <button
+                      key={m.value}
+                      type="button"
+                      disabled={guardando}
+                      onClick={() => seleccionarMetodo(m.value)}
+                      className={`min-h-[36px] px-2 py-1 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50
+                        ${activo
+                          ? 'border-brand-red bg-red-50 text-brand-red'
+                          : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {editEfectivo && (
+                <div className="mt-2 bg-slate-50 rounded-lg p-2 space-y-2">
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="block text-[11px] text-slate-500 mb-1">Efectivo recibido</label>
+                      <input
+                        type="number" value={efectivoInput} min="0" step="0.01" placeholder="0.00"
+                        autoFocus
+                        onChange={e => setEfectivoInput(e.target.value)}
+                        className="w-full min-h-[40px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[11px] text-slate-500 mb-1">Cambio a dar</label>
+                      <div className={`min-h-[40px] px-3 py-2 rounded-lg border flex items-center justify-center font-bold
+                        ${cambioNuevo != null && cambioNuevo < 0
+                          ? 'border-red-300 bg-red-50 text-red-600'
+                          : 'border-slate-200 bg-white text-emerald-600'}`}
+                      >
+                        {cambioNuevo == null ? '—' : cambioNuevo < 0 ? `Faltan ${fmt(Math.abs(cambioNuevo))}` : fmt(cambioNuevo)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditEfectivo(false)}
+                      className="flex-1 min-h-[38px] rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                    >Cancelar</button>
+                    <button
+                      type="button"
+                      disabled={guardando}
+                      onClick={() => aplicarMetodo('efectivo', efectivoInput !== '' ? parseFloat(efectivoInput) : null)}
+                      className="flex-1 min-h-[38px] rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold"
+                    >{guardando ? '...' : 'Guardar efectivo'}</button>
+                  </div>
+                </div>
+              )}
+              {errorMetodo && <p className="text-xs text-red-600 mt-1">{errorMetodo}</p>}
+            </div>
+          )}
           {venta.efectivo_recibido != null && (
             <div className="flex justify-between text-sm text-slate-500">
               <span>Efectivo</span><span>{fmt(venta.efectivo_recibido)}</span>
@@ -1098,6 +1228,7 @@ export default function Caja() {
   const [carrito, setCarrito] = useState([]);
   const [nombreCliente, setNombreCliente] = useState('');
   const [efectivo, setEfectivo] = useState('');
+  const [metodoPago, setMetodoPago] = useState('efectivo');
   const [cobrando, setCobrando] = useState(false);
   const [errorCobro, setErrorCobro] = useState('');
 
@@ -1117,6 +1248,17 @@ export default function Caja() {
 
   // Historial
   const [ventaDetalle, setVentaDetalle] = useState(null);
+  const [histReload, setHistReload] = useState(0);
+
+  // Al cambiar el método de pago de una venta: recarga el detalle abierto (para
+  // reflejar efectivo/cambio actualizados) y refresca la lista del historial.
+  const handleMetodoActualizado = useCallback(async (ventaId) => {
+    setHistReload(n => n + 1);
+    try {
+      const res = await api.get(`/api/ventas/${ventaId}`);
+      setVentaDetalle(prev => (prev && prev.id === ventaId ? res.data : prev));
+    } catch { /* el detalle se mantiene con el cambio local */ }
+  }, []);
 
   // Modales
   const [variantesModal, setVariantesModal] = useState(null);  // {producto, variantes}
@@ -1199,7 +1341,8 @@ export default function Caja() {
     : productos;
 
   const total = carrito.reduce((s, i) => s + parseFloat(i.subtotal || 0), 0);
-  const cambio = efectivo !== '' ? parseFloat(efectivo) - total : null;
+  const esEfectivo = metodoPago === 'efectivo';
+  const cambio = esEfectivo && efectivo !== '' ? parseFloat(efectivo) - total : null;
 
   // ── Flujo de agregar producto ─────────────────────────────────────────────
 
@@ -1399,7 +1542,8 @@ export default function Caja() {
         usuario_id: usuarioId,
         usuario,
         nombre_cliente: nombreCliente.trim() || null,
-        efectivo_recibido: efectivo !== '' ? parseFloat(efectivo) : null,
+        metodo_pago: metodoPago,
+        efectivo_recibido: esEfectivo && efectivo !== '' ? parseFloat(efectivo) : null,
         client_uid: ventaUidRef.current,
         items: carrito.map(i => ({
           producto_id: i.producto_id,
@@ -1427,16 +1571,17 @@ export default function Caja() {
       setCarrito([]);
       setNombreCliente('');
       setEfectivo('');
+      setMetodoPago('efectivo');
       cargarProductos(true); // refrescar stock en tiempo real
       setTicketNum(res.data.numero_ticket + 1); // usar número real devuelto por el servidor
-      imprimirTicket(ticketData);
+      imprimirTicketConCopia(ticketData);
     } catch (err) {
       setErrorCobro(err.message || 'Error al cobrar la venta');
     } finally {
       cobrandoRef.current = false;
       setCobrando(false);
     }
-  }, [carrito, usuarioId, usuario, nombreCliente, efectivo, total, productos, refrescarTicketNum]);
+  }, [carrito, usuarioId, usuario, nombreCliente, efectivo, metodoPago, esEfectivo, total, productos, refrescarTicketNum]);
 
   // ── Enter para cobrar ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1678,7 +1823,28 @@ export default function Caja() {
               <span className="text-white text-2xl font-bold">{fmt(total)}</span>
             </div>
 
-            {/* Efectivo + cambio */}
+            {/* Método de pago */}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Método de pago</label>
+              <div className="grid grid-cols-2 gap-2">
+                {METODOS_PAGO.map(m => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => { setMetodoPago(m.value); setErrorCobro(''); }}
+                    className={`min-h-[44px] px-3 py-2 rounded-lg border text-sm font-semibold transition-colors
+                      ${metodoPago === m.value
+                        ? 'border-brand-red bg-red-50 text-brand-red'
+                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Efectivo + cambio — solo cuando el pago es en efectivo */}
+            {esEfectivo && (
             <div className="flex gap-2">
               <div className="flex-1">
                 <label className="block text-xs text-slate-500 mb-1">Efectivo recibido</label>
@@ -1706,6 +1872,7 @@ export default function Caja() {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Error de cobro */}
             {errorCobro && (
@@ -1891,6 +2058,7 @@ export default function Caja() {
 
       {historialModal && (
         <HistorialModal
+          reloadSignal={histReload}
           onClose={() => { setHistorialModal(false); setVentaDetalle(null); }}
           onVerDetalle={verDetalleVenta}
         />
@@ -1919,6 +2087,8 @@ export default function Caja() {
       {ventaDetalle && (
         <DetalleVentaModal
           venta={ventaDetalle}
+          usuarioId={usuarioId}
+          onActualizado={handleMetodoActualizado}
           onClose={() => setVentaDetalle(null)}
           onReimprimir={(esCopia) => imprimirTicket({
             id: ventaDetalle.id,

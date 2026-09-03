@@ -4,7 +4,8 @@ import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../context/ToastContext';
 import { formatDate } from '../lib/utils';
-import { imprimirTicket } from '../lib/print';
+import { imprimirTicketConCopia } from '../lib/print';
+import { METODOS_PAGO } from '../lib/metodosPago';
 import Pagination from '../components/ui/Pagination';
 import PageLoader from '../components/ui/PageLoader';
 import Modal from '../components/ui/Modal';
@@ -33,12 +34,14 @@ function EstadoBadge({ estado }) {
 function DetalleModal({ apartado, onClose, onEntregar, onCancelar, onEditar, procesando, puedeEntregar }) {
   const [accion, setAccion] = useState(null);     // 'entregar' | 'cancelar'
   const [efectivo, setEfectivo] = useState('');
+  const [metodoPago, setMetodoPago] = useState('efectivo');
   const [motivo, setMotivo] = useState('');
 
-  useEffect(() => { setAccion(null); setEfectivo(''); setMotivo(''); }, [apartado?.id]);
+  useEffect(() => { setAccion(null); setEfectivo(''); setMetodoPago('efectivo'); setMotivo(''); }, [apartado?.id]);
 
   if (!apartado) return null;
-  const saldo = efectivo !== '' ? parseFloat(efectivo) - parseFloat(apartado.total || 0) : null;
+  const entregaEsEfectivo = metodoPago === 'efectivo';
+  const saldo = entregaEsEfectivo && efectivo !== '' ? parseFloat(efectivo) - parseFloat(apartado.total || 0) : null;
 
   return (
     <Modal isOpen={!!apartado} onClose={onClose} title={`Apartado #${apartado.id}`} size="lg">
@@ -133,20 +136,40 @@ function DetalleModal({ apartado, onClose, onEntregar, onCancelar, onEditar, pro
         {apartado.estado === 'activo' && accion === 'entregar' && puedeEntregar && (
           <div className="border-t pt-3 space-y-2">
             <p className="text-sm font-medium text-slate-700">Cobrar y entregar — se genera el ticket de venta</p>
-            <label className="block text-xs text-slate-500">Efectivo recibido (opcional)</label>
-            <input
-              type="number" value={efectivo} min="0" step="0.01" placeholder="0.00"
-              onChange={e => setEfectivo(e.target.value)}
-              className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
-            />
-            {saldo != null && (
-              <p className={`text-sm font-semibold ${saldo < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                {saldo < 0 ? `Faltan ${fmt(Math.abs(saldo))}` : `Cambio: ${fmt(saldo)}`}
-              </p>
+            <label className="block text-xs text-slate-500">Método de pago</label>
+            <div className="grid grid-cols-2 gap-2">
+              {METODOS_PAGO.map(m => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setMetodoPago(m.value)}
+                  className={`min-h-[40px] px-2 py-1.5 rounded-lg border text-sm font-semibold transition-colors
+                    ${metodoPago === m.value
+                      ? 'border-brand-red bg-red-50 text-brand-red'
+                      : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            {entregaEsEfectivo && (
+              <>
+                <label className="block text-xs text-slate-500">Efectivo recibido (opcional)</label>
+                <input
+                  type="number" value={efectivo} min="0" step="0.01" placeholder="0.00"
+                  onChange={e => setEfectivo(e.target.value)}
+                  className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red"
+                />
+                {saldo != null && (
+                  <p className={`text-sm font-semibold ${saldo < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {saldo < 0 ? `Faltan ${fmt(Math.abs(saldo))}` : `Cambio: ${fmt(saldo)}`}
+                  </p>
+                )}
+              </>
             )}
             <div className="flex justify-end gap-3 pt-1">
               <button onClick={() => setAccion(null)} className="min-h-[40px] px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">Volver</button>
-              <SafeButton onClick={() => onEntregar(apartado, efectivo)} loading={procesando} variant="primary">
+              <SafeButton onClick={() => onEntregar(apartado, efectivo, metodoPago)} loading={procesando} variant="primary">
                 <Check size={16} /> Confirmar entrega
               </SafeButton>
             </div>
@@ -241,15 +264,16 @@ export default function Apartados() {
     }
   };
 
-  const handleEntregar = async (apartado, efectivo) => {
+  const handleEntregar = async (apartado, efectivo, metodoPago = 'efectivo') => {
     setProcesando(true);
     try {
       const res = await api.put(`/api/apartados/${apartado.id}/entregar`, {
         usuario_id: usuarioId,
         usuario,
-        efectivo_recibido: efectivo !== '' ? parseFloat(efectivo) : null,
+        metodo_pago: metodoPago,
+        efectivo_recibido: metodoPago === 'efectivo' && efectivo !== '' ? parseFloat(efectivo) : null,
       });
-      imprimirTicket({
+      imprimirTicketConCopia({
         id: res.data.venta_id,
         numero_ticket: res.data.numero_ticket,
         items: (apartado.detalles || []).map(d => ({

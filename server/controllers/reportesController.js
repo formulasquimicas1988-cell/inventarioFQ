@@ -1,6 +1,12 @@
 const pool = require('../db');
 const XLSX = require('xlsx');
 
+// Etiqueta legible del método de pago (vacío si el movimiento no es de una venta)
+function etiquetaMetodoPago(metodo) {
+  const mapa = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta crédito', credito: 'Crédito' };
+  return metodo ? (mapa[metodo] || metodo) : '';
+}
+
 // Format date to Spanish 12h format
 function formatDateEs(date) {
   if (!date) return '';
@@ -96,9 +102,11 @@ const exportMovimientos = async (req, res) => {
         p.unidad_medida,
         m.cliente,
         m.proveedor,
-        m.notas
+        m.notas,
+        v.metodo_pago
       FROM movimientos m
       JOIN productos p ON m.producto_id = p.id
+      LEFT JOIN ventas v ON m.venta_id = v.id
       ${whereClause}
       ORDER BY m.fecha DESC, m.id DESC
     `, params);
@@ -114,6 +122,7 @@ const exportMovimientos = async (req, res) => {
       'Unidad': r.unidad_medida,
       'Cliente': r.cliente || '',
       'Proveedor': r.proveedor || '',
+      'Método de Pago': etiquetaMetodoPago(r.metodo_pago),
       'Notas': r.notas || ''
     }));
 
@@ -121,7 +130,7 @@ const exportMovimientos = async (req, res) => {
     ws['!cols'] = [
       { wch: 20 }, { wch: 10 }, { wch: 12 }, { wch: 35 },
       { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 10 },
-      { wch: 25 }, { wch: 25 }, { wch: 40 }
+      { wch: 25 }, { wch: 25 }, { wch: 16 }, { wch: 40 }
     ];
 
     const wb = XLSX.utils.book_new();
