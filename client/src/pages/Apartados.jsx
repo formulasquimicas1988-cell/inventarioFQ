@@ -137,21 +137,15 @@ function DetalleModal({ apartado, onClose, onEntregar, onCancelar, onEditar, pro
           <div className="border-t pt-3 space-y-2">
             <p className="text-sm font-medium text-slate-700">Cobrar y entregar — se genera el ticket de venta</p>
             <label className="block text-xs text-slate-500">Método de pago</label>
-            <div className="grid grid-cols-2 gap-2">
+            <select
+              value={metodoPago}
+              onChange={e => setMetodoPago(e.target.value)}
+              className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base bg-white focus:outline-none focus:ring-2 focus:ring-brand-red"
+            >
               {METODOS_PAGO.map(m => (
-                <button
-                  key={m.value}
-                  type="button"
-                  onClick={() => setMetodoPago(m.value)}
-                  className={`min-h-[40px] px-2 py-1.5 rounded-lg border text-sm font-semibold transition-colors
-                    ${metodoPago === m.value
-                      ? 'border-brand-red bg-red-50 text-brand-red'
-                      : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  {m.label}
-                </button>
+                <option key={m.value} value={m.value}>{m.label}</option>
               ))}
-            </div>
+            </select>
             {entregaEsEfectivo && (
               <>
                 <label className="block text-xs text-slate-500">Efectivo recibido (opcional)</label>

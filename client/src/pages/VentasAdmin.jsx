@@ -178,26 +178,17 @@ function DetalleModal({ venta, usuarioId, onClose, onAnular, onEditDetalle, onDe
             </div>
             {!venta.anulada && (
               <div className="pt-1">
-                <p className="text-[11px] text-slate-400 mb-1">Cambiar método de pago</p>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {METODOS_PAGO.map(m => {
-                    const activo = (editEfectivo ? 'efectivo' : metodo) === m.value;
-                    return (
-                      <button
-                        key={m.value}
-                        type="button"
-                        disabled={guardandoMetodo}
-                        onClick={() => seleccionarMetodo(m.value)}
-                        className={`min-h-[34px] px-1 py-1 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50
-                          ${activo
-                            ? 'border-brand-red bg-red-50 text-brand-red'
-                            : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
-                      >
-                        {m.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <label className="block text-[11px] text-slate-400 mb-1">Cambiar método de pago</label>
+                <select
+                  value={editEfectivo ? 'efectivo' : metodo}
+                  disabled={guardandoMetodo}
+                  onChange={e => seleccionarMetodo(e.target.value)}
+                  className="w-full min-h-[40px] px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red disabled:opacity-50"
+                >
+                  {METODOS_PAGO.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
 
                 {editEfectivo && (
                   <div className="mt-2 bg-white rounded-lg border border-slate-200 p-2 space-y-2">

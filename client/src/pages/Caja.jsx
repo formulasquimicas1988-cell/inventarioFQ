@@ -768,21 +768,15 @@ function ApartadosModal({ usuario, usuarioId, onClose, onStockChange }) {
               <div className="space-y-2 pt-1 border-t">
                 <p className="text-sm font-medium text-slate-700">Cobrar y entregar — genera el ticket</p>
                 <label className="block text-xs text-slate-500">Método de pago</label>
-                <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={metodoPago}
+                  onChange={e => setMetodoPago(e.target.value)}
+                  className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base bg-white focus:outline-none focus:ring-2 focus:ring-brand-red"
+                >
                   {METODOS_PAGO.map(m => (
-                    <button
-                      key={m.value}
-                      type="button"
-                      onClick={() => setMetodoPago(m.value)}
-                      className={`min-h-[40px] px-2 py-1.5 rounded-lg border text-sm font-semibold transition-colors
-                        ${metodoPago === m.value
-                          ? 'border-brand-red bg-red-50 text-brand-red'
-                          : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      {m.label}
-                    </button>
+                    <option key={m.value} value={m.value}>{m.label}</option>
                   ))}
-                </div>
+                </select>
                 {entregaEsEfectivo && (
                   <>
                     <label className="block text-xs text-slate-500">Efectivo recibido (opcional)</label>
@@ -950,26 +944,17 @@ function DetalleVentaModal({ venta, usuarioId, onClose, onReimprimir, onActualiz
           </div>
           {!venta.anulada && (
             <div className="pt-1">
-              <p className="text-[11px] text-slate-400 mb-1">Cambiar método de pago</p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {METODOS_PAGO.map(m => {
-                  const activo = (editEfectivo ? 'efectivo' : metodo) === m.value;
-                  return (
-                    <button
-                      key={m.value}
-                      type="button"
-                      disabled={guardando}
-                      onClick={() => seleccionarMetodo(m.value)}
-                      className={`min-h-[36px] px-2 py-1 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50
-                        ${activo
-                          ? 'border-brand-red bg-red-50 text-brand-red'
-                          : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      {m.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <label className="block text-[11px] text-slate-400 mb-1">Cambiar método de pago</label>
+              <select
+                value={editEfectivo ? 'efectivo' : metodo}
+                disabled={guardando}
+                onChange={e => seleccionarMetodo(e.target.value)}
+                className="w-full min-h-[40px] px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red disabled:opacity-50"
+              >
+                {METODOS_PAGO.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
 
               {editEfectivo && (
                 <div className="mt-2 bg-slate-50 rounded-lg p-2 space-y-2">
@@ -1826,21 +1811,15 @@ export default function Caja() {
             {/* Método de pago */}
             <div>
               <label className="block text-xs text-slate-500 mb-1">Método de pago</label>
-              <div className="grid grid-cols-2 gap-2">
+              <select
+                value={metodoPago}
+                onChange={e => { setMetodoPago(e.target.value); setErrorCobro(''); }}
+                className="w-full min-h-[44px] px-3 py-2 border border-slate-300 rounded-lg text-base bg-white focus:outline-none focus:ring-2 focus:ring-brand-red"
+              >
                 {METODOS_PAGO.map(m => (
-                  <button
-                    key={m.value}
-                    type="button"
-                    onClick={() => { setMetodoPago(m.value); setErrorCobro(''); }}
-                    className={`min-h-[44px] px-3 py-2 rounded-lg border text-sm font-semibold transition-colors
-                      ${metodoPago === m.value
-                        ? 'border-brand-red bg-red-50 text-brand-red'
-                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    {m.label}
-                  </button>
+                  <option key={m.value} value={m.value}>{m.label}</option>
                 ))}
-              </div>
+              </select>
             </div>
 
             {/* Efectivo + cambio — solo cuando el pago es en efectivo */}
