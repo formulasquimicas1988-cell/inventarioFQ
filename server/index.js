@@ -31,9 +31,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.set('trust proxy', true); // Para obtener IP real detrás de Railway/proxies
 
-// Proteger todas las rutas /api/* excepto login y health
+// Proteger todas las rutas /api/* excepto login, health y la pantalla pública
 app.use('/api', (req, res, next) => {
-  if (req.path.startsWith('/auth') || req.path === '/health') return next();
+  if (
+    req.path.startsWith('/auth') ||
+    req.path === '/health' ||
+    req.path.startsWith('/pantalla-tk9x2')
+  ) return next();
   authMiddleware(req, res, next);
 });
 
@@ -48,6 +52,7 @@ app.use('/api/alertas', require('./routes/alertas'));
 app.use('/api/auditoria', require('./routes/auditoria'));
 app.use('/api/ventas', require('./routes/ventas'));
 app.use('/api/apartados', require('./routes/apartados'));
+app.use('/api/pantalla-tk9x2', require('./routes/pantalla')); // pública, sin login
 
 // Health check (must be before the SPA catch-all)
 app.get('/api/health', (req, res) => {

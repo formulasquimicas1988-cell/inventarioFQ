@@ -19,6 +19,7 @@ import Auditoria from './pages/Auditoria'
 import Caja from './pages/Caja'
 import VentasAdmin from './pages/VentasAdmin'
 import Apartados from './pages/Apartados'
+import Pantalla from './pages/Pantalla'
 
 // Redirige a la ruta home según el rol
 function HomeRedirect() {
@@ -67,6 +68,9 @@ function InventarioRoutes() {
 
 function AppRoutes() {
   const { usuario, rol } = useUser();
+
+  // Pantalla pública de la tele de bodega: sin login, sin redirect.
+  if (window.location.pathname === '/pantalla-tk9x2') return <Pantalla />;
 
   if (!usuario) return <Login />;
 
