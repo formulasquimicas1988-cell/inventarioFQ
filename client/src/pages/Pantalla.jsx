@@ -158,12 +158,15 @@ export default function Pantalla() {
               </div>
               <div style={styles.cliente}>{v.nombre_cliente || 'Cliente'}</div>
               <ul style={styles.prodList}>
-                {v.productos.map((p, i) => (
+                {v.productos.slice(0, 6).map((p, i) => (
                   <li key={i} style={styles.prodItem}>
                     <span style={styles.prodCant}>{formatCant(p.cantidad)}×</span>
                     <span style={styles.prodDesc}>{p.descripcion}</span>
                   </li>
                 ))}
+                {v.productos.length > 6 && (
+                  <li style={styles.prodMas}>+{v.productos.length - 6} artículo(s) más…</li>
+                )}
               </ul>
             </article>
           ))}
@@ -210,12 +213,14 @@ const styles = {
     flexDirection: 'column',
     overflow: 'hidden',
     userSelect: 'none',
+    // Margen anti-overscan: las teles recortan ~3-5% de los bordes
+    padding: '2.6vh 2.4vw',
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '1.4vh 2.5vw',
+    padding: '0 0 1.4vh',
     borderBottom: `4px solid ${COLORS.red}`,
     flexShrink: 0,
   },
@@ -229,15 +234,15 @@ const styles = {
     background: COLORS.red,
     display: 'inline-block',
   },
-  title: { fontSize: '3.4vw', fontWeight: 900, letterSpacing: '0.04em' },
-  brand: { fontSize: '2vw', fontWeight: 700, color: COLORS.muted },
+  title: { fontSize: '3.6vw', fontWeight: 900, letterSpacing: '0.04em' },
+  brand: { fontSize: '2.1vw', fontWeight: 700, color: COLORS.muted },
 
   grid: {
     flex: 1,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(28vw, 1fr))',
-    gap: '2vh 2vw',
-    padding: '2.5vh 2.5vw',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(36vw, 1fr))',
+    gap: '2.2vh 2.2vw',
+    padding: '2.6vh 0 0',
     overflow: 'hidden',
     alignContent: 'start',
   },
@@ -245,7 +250,7 @@ const styles = {
     background: COLORS.card,
     border: `3px solid ${COLORS.cardBorder}`,
     borderRadius: '1.4vw',
-    padding: '2vh 1.8vw',
+    padding: '2.2vh 2vw',
     display: 'flex',
     flexDirection: 'column',
     gap: '1.4vh',
@@ -255,22 +260,23 @@ const styles = {
     boxShadow: `0 0 3vw rgba(204,0,0,0.55)`,
   },
   cardTop: { display: 'flex', alignItems: 'baseline', gap: '1vw' },
-  ticketLabel: { fontSize: '1.6vw', fontWeight: 700, color: COLORS.muted, letterSpacing: '0.1em' },
-  ticketNum: { fontSize: '4vw', fontWeight: 900, color: COLORS.white, lineHeight: 1 },
+  ticketLabel: { fontSize: '1.7vw', fontWeight: 700, color: COLORS.muted, letterSpacing: '0.1em' },
+  ticketNum: { fontSize: '4.4vw', fontWeight: 900, color: COLORS.white, lineHeight: 1 },
   cliente: {
-    fontSize: '2.4vw',
+    fontSize: '2.9vw',
     fontWeight: 800,
-    color: COLORS.red === '#CC0000' ? '#ff5a5a' : COLORS.red,
+    color: '#ff5a5a',
     borderBottom: `2px solid ${COLORS.cardBorder}`,
     paddingBottom: '1vh',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
-  prodList: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.8vh' },
-  prodItem: { display: 'flex', gap: '1vw', alignItems: 'baseline', fontSize: '1.9vw', lineHeight: 1.15 },
-  prodCant: { fontWeight: 900, color: COLORS.white, minWidth: '3.5vw' },
+  prodList: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.9vh' },
+  prodItem: { display: 'flex', gap: '1vw', alignItems: 'baseline', fontSize: '2.3vw', lineHeight: 1.15 },
+  prodCant: { fontWeight: 900, color: COLORS.white, minWidth: '3.6vw' },
   prodDesc: { fontWeight: 600, color: '#dbe6fb' },
+  prodMas: { fontSize: '1.9vw', fontWeight: 700, color: COLORS.muted, fontStyle: 'italic', marginTop: '0.4vh' },
 
   empty: {
     flex: 1,
