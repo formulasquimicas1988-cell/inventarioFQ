@@ -12,7 +12,7 @@ const COLORS = {
   muted: '#9fb4d8',
 };
 
-const INTERVALO_MS = 7000; // polling cada 7s
+const INTERVALO_MS = 3000; // polling cada 3s (aparece casi al momento)
 
 function formatCant(n) {
   const q = Number(n);
@@ -33,6 +33,11 @@ export default function Pantalla() {
     const ctx = audioRef.current;
     if (!ctx) return;
     const now = ctx.currentTime;
+    // Compresor para maximizar el volumen percibido sin distorsionar
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -12;
+    comp.ratio.value = 12;
+    comp.connect(ctx.destination);
     [880, 1320].forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -40,11 +45,11 @@ export default function Pantalla() {
       osc.frequency.value = freq;
       const t = now + i * 0.15;
       gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
-      osc.connect(gain).connect(ctx.destination);
+      gain.gain.exponentialRampToValueAtTime(0.95, t + 0.02); // más fuerte
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      osc.connect(gain).connect(comp);
       osc.start(t);
-      osc.stop(t + 0.45);
+      osc.stop(t + 0.5);
     });
   }, []);
 
@@ -121,6 +126,29 @@ export default function Pantalla() {
     const id = setInterval(cargar, INTERVALO_MS);
     return () => clearInterval(id);
   }, [cargar]);
+
+  // Mantener la pantalla despierta (best-effort). El Silk del Fire TV es
+  // viejo y puede no soportarlo; es un refuerzo, no reemplaza el ajuste de
+  // protector de pantalla del Fire TV.
+  useEffect(() => {
+    let lock = null;
+    const pedir = async () => {
+      try {
+        if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+          lock = await navigator.wakeLock.request('screen');
+        }
+      } catch {
+        // no soportado o rechazado: se ignora
+      }
+    };
+    pedir();
+    const onVis = () => { if (document.visibilityState === 'visible') pedir(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      try { lock && lock.release(); } catch { /* ignore */ }
+    };
+  }, []);
 
   return (
     <div style={styles.root}>
