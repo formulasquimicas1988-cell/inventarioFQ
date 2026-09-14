@@ -58,7 +58,7 @@ export default function Pantalla() {
     try {
       const u = new SpeechSynthesisUtterance(`Ticket ${numero}`);
       u.lang = 'es-MX';
-      u.rate = 0.95;
+      u.rate = 0.8; // un poco más lento para que se entienda mejor
       u.pitch = 1;
       u.volume = 1;
       window.speechSynthesis.speak(u);
