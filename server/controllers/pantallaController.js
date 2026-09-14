@@ -1,5 +1,16 @@
 const pool = require('../db');
 
+// Hora de Honduras (UTC-6) de hace 5 minutos, como string MySQL DATETIME.
+// Se calcula en Node (process.env.TZ = America/Tegucigalpa) para usar el MISMO
+// reloj con el que se guarda ventas.fecha (nowHN), y NO el NOW() de MySQL, que
+// en Railway corre en UTC y dejaría el filtro siempre vacío.
+function hace5MinHN() {
+  const d = new Date(Date.now() - 5 * 60 * 1000);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 // GET /api/pantalla-tk9x2/ventas
 // PÚBLICO (sin auth). Devuelve las ventas de los últimos 5 minutos, más
 // recientes primero, SIN precios ni montos de ningún tipo. Los tickets
@@ -10,8 +21,9 @@ const ventasRecientes = async (req, res) => {
       `SELECT id, numero_ticket, nombre_cliente, fecha
        FROM ventas
        WHERE anulada = 0
-         AND fecha >= NOW() - INTERVAL 5 MINUTE
-       ORDER BY fecha DESC, id DESC`
+         AND fecha >= ?
+       ORDER BY fecha DESC, id DESC`,
+      [hace5MinHN()]
     );
 
     if (ventas.length === 0) return res.json({ ventas: [] });
