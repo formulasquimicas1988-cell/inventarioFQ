@@ -4,12 +4,13 @@ const pool = require('../db');
 // Se calcula en Node (process.env.TZ = America/Tegucigalpa) para usar el MISMO
 // reloj con el que se guarda ventas.fecha (nowHN), y NO el NOW() de MySQL, que
 // en Railway corre en UTC y dejaría el filtro siempre vacío.
-function hace5MinHN() {
-  const d = new Date(Date.now() - 5 * 60 * 1000);
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const pad2 = n => String(n).padStart(2, '0');
+function fmtHN(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ` +
+         `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
+function ahoraHN() { return fmtHN(new Date()); }
+function hace5MinHN() { return fmtHN(new Date(Date.now() - 5 * 60 * 1000)); }
 
 // GET /api/pantalla-tk9x2/ventas
 // PÚBLICO (sin auth). Devuelve las ventas de los últimos 5 minutos, más
@@ -18,12 +19,13 @@ function hace5MinHN() {
 const ventasRecientes = async (req, res) => {
   try {
     const [ventas] = await pool.query(
-      `SELECT id, numero_ticket, nombre_cliente, fecha
+      `SELECT id, numero_ticket, nombre_cliente,
+              TIMESTAMPDIFF(SECOND, fecha, ?) AS segundos
        FROM ventas
        WHERE anulada = 0
          AND fecha >= ?
        ORDER BY fecha DESC, id DESC`,
-      [hace5MinHN()]
+      [ahoraHN(), hace5MinHN()]
     );
 
     if (ventas.length === 0) return res.json({ ventas: [] });
@@ -50,6 +52,7 @@ const ventasRecientes = async (req, res) => {
         id: v.id,
         numero_ticket: v.numero_ticket,
         nombre_cliente: v.nombre_cliente || null,
+        segundos: Math.max(0, Number(v.segundos) || 0),
         productos: productosPorVenta[v.id] || [],
       })),
     });
