@@ -1,4 +1,54 @@
 const pool = require('../db');
+const { execFile } = require('child_process');
+
+// ── Voz "Ticket N" generada con espeak-ng (offline, sin servicios externos) ──
+// El Silk del Fire TV no tiene voz propia, así que el servidor genera el WAV
+// y la tele solo lo reproduce (reproducir audio sí funciona en Silk).
+const cacheVoz = new Map(); // clave -> Buffer WAV
+const MAX_CACHE = 500;
+
+function generarWav(texto) {
+  return new Promise((resolve, reject) => {
+    // -v es: español · -s 150: velocidad · -a 200: volumen máximo · --stdout: WAV a stdout
+    execFile(
+      'espeak-ng',
+      ['-v', 'es', '-s', '150', '-a', '200', '--stdout', texto],
+      { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 },
+      (err, stdout) => (err ? reject(err) : resolve(stdout))
+    );
+  });
+}
+
+// GET /api/pantalla-tk9x2/voz?n=132   |   ?activado=1
+const voz = async (req, res) => {
+  try {
+    let texto, clave;
+    if (req.query.activado) {
+      texto = 'Sonido activado';
+      clave = 'activado';
+    } else {
+      const n = parseInt(req.query.n, 10);
+      if (!Number.isInteger(n) || n < 0 || n > 9999999) {
+        return res.status(400).json({ error: 'n inválido' });
+      }
+      texto = `Ticket ${n}`;
+      clave = `t${n}`;
+    }
+
+    let wav = cacheVoz.get(clave);
+    if (!wav) {
+      wav = await generarWav(texto);
+      if (cacheVoz.size >= MAX_CACHE) cacheVoz.clear();
+      cacheVoz.set(clave, wav);
+    }
+    res.set('Content-Type', 'audio/wav');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(wav);
+  } catch (err) {
+    console.error('pantalla voz error:', err.message);
+    res.status(500).json({ error: 'No se pudo generar la voz' });
+  }
+};
 
 // Hora de Honduras (UTC-6) de hace 5 minutos, como string MySQL DATETIME.
 // Se calcula en Node (process.env.TZ = America/Tegucigalpa) para usar el MISMO
@@ -59,4 +109,4 @@ const ventasRecientes = async (req, res) => {
   }
 };
 
-module.exports = { ventasRecientes };
+module.exports = { ventasRecientes, voz };

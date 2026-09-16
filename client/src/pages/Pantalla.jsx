@@ -25,7 +25,7 @@ export default function Pantalla() {
   const seenRef = useRef(null);       // Set de ids ya vistos; null = primera carga
   const audioRef = useRef(null);      // AudioContext (se crea al activar)
   const activadoRef = useRef(false);  // espejo de `activado` para usar dentro de cargar()
-  const voicesRef = useRef([]);       // voces disponibles de speechSynthesis
+  const vozQueueRef = useRef(Promise.resolve()); // cola para reproducir voces en orden
 
   // ── Ajustes por URL (se afinan desde la tele, sin redeploy) ───────────────
   //   ?cols=3   → número de columnas (1..6, por defecto 3)
@@ -58,52 +58,43 @@ export default function Pantalla() {
     });
   }, []);
 
-  // ── Voz robusta (el Silk del Fire TV es viejo y se "duerme") ──────────────
-  const pickVoice = () => {
-    const vs = voicesRef.current || [];
-    return (
-      vs.find(v => /^es(-|_|$)/i.test(v.lang)) ||
-      vs.find(v => /es/i.test(v.lang)) ||
-      vs[0] ||
-      null
-    );
-  };
-
-  const hablar = useCallback((texto, volumen = 1) => {
+  // ── Voz: el WAV lo genera el backend (espeak-ng) y acá solo se reproduce.
+  // El Silk del Fire TV no tiene voz propia, pero reproducir audio sí funciona.
+  const reproducirVoz = useCallback(async (query) => {
+    const ctx = audioRef.current;
+    if (!ctx) return;
+    let res;
     try {
-      const synth = window.speechSynthesis;
-      if (!synth) return;
-      const u = new SpeechSynthesisUtterance(texto);
-      const v = pickVoice();
-      if (v) u.voice = v;
-      u.lang = (v && v.lang) || 'es-MX';
-      u.rate = 0.8; // un poco lento para que se entienda
-      u.pitch = 1;
-      u.volume = volumen;
-      synth.resume();  // por si la cola quedó pausada
-      synth.speak(u);
+      res = await api.get(`/api/pantalla-tk9x2/voz?${query}`, { responseType: 'arraybuffer' });
     } catch {
-      // sin soporte de voz: se ignora
+      return; // sin voz del server: al menos ya sonó el beep
     }
+    await new Promise((resolve) => {
+      try {
+        // Forma con callbacks para máxima compatibilidad con Silk (Chromium viejo)
+        ctx.decodeAudioData(
+          res.data,
+          (buf) => {
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(ctx.destination);
+            src.onended = resolve;
+            src.start();
+          },
+          () => resolve()
+        );
+      } catch {
+        resolve();
+      }
+    });
   }, []);
 
-  const decirTicket = useCallback((numero) => hablar(`Ticket ${numero}`), [hablar]);
+  // Encolar para que varias voces suenen una tras otra, no encimadas
+  const encolarVoz = useCallback((query) => {
+    vozQueueRef.current = vozQueueRef.current.then(() => reproducirVoz(query)).catch(() => {});
+  }, [reproducirVoz]);
 
-  // Cargar voces + keepalive para que speechSynthesis no se "duerma"
-  useEffect(() => {
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-    const load = () => { voicesRef.current = synth.getVoices() || []; };
-    load();
-    synth.onvoiceschanged = load;
-    const ka = setInterval(() => {
-      try { if (!synth.speaking) synth.resume(); } catch { /* ignore */ }
-    }, 8000);
-    return () => {
-      clearInterval(ka);
-      try { synth.onvoiceschanged = null; } catch { /* ignore */ }
-    };
-  }, []);
+  const decirTicket = useCallback((numero) => encolarVoz(`n=${numero}`), [encolarVoz]);
 
   // ── Activación del audio (un solo toque al configurar la tele) ────────────
   const activar = useCallback(() => {
@@ -116,16 +107,14 @@ export default function Pantalla() {
       }
     } catch { /* sin Web Audio: seguimos sin beep */ }
 
-    try { window.speechSynthesis.getVoices(); } catch { /* ignore */ }
-
     activadoRef.current = true;
     setActivado(true);
 
     // Confirmación inmediata: suena el beep y la voz dice "Sonido activado".
     // Así, al configurar la tele, confirmás al instante que el audio funciona.
     beep();
-    hablar('Sonido activado', 1);
-  }, [beep, hablar]);
+    encolarVoz('activado=1');
+  }, [beep, encolarVoz]);
 
   // ── Carga de datos + detección de tickets nuevos ──────────────────────────
   const cargar = useCallback(async () => {
