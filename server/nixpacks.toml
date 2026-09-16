@@ -1,6 +1,0 @@
-# Instala espeak-ng + voces MBROLA en español (mb-es1/mb-es2), que suenan
-# mucho más naturales que espeak-ng a secas. Todo offline, sin servicios
-# externos. Se usa para generar el audio "Ticket N" de la pantalla pública,
-# porque el navegador Silk del Fire TV no trae voz propia.
-[phases.setup]
-aptPkgs = ["espeak-ng", "mbrola", "mbrola-es1", "mbrola-es2"]

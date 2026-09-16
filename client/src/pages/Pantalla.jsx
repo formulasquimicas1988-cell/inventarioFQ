@@ -6,6 +6,9 @@ const INTERVALO_MS = 3000; // polling cada 3s (aparece casi al momento)
 // Umbral: si un ticket tiene más de estos productos, la lista pasa a 2 columnas
 const MULTI_COL_DESDE = 7;
 
+// Clips de voz (grabados por el usuario) servidos como estáticos en /voz/*.mp3
+const CLAVES_CLIPS = ['ticket', 'activado', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
 function formatCant(n) {
   const q = Number(n);
   if (Number.isInteger(q)) return String(q);
@@ -25,7 +28,8 @@ export default function Pantalla() {
   const seenRef = useRef(null);       // Set de ids ya vistos; null = primera carga
   const audioRef = useRef(null);      // AudioContext (se crea al activar)
   const activadoRef = useRef(false);  // espejo de `activado` para usar dentro de cargar()
-  const vozQueueRef = useRef(Promise.resolve()); // cola para reproducir voces en orden
+  const clipsRef = useRef({});        // AudioBuffers de los clips de voz precargados
+  const cursorRef = useRef(0);        // reloj de audio para encolar voces sin encimarse
 
   // ── Ajustes por URL (se afinan desde la tele, sin redeploy) ───────────────
   //   ?cols=3   → número de columnas (1..6, por defecto 3)
@@ -58,63 +62,62 @@ export default function Pantalla() {
     });
   }, []);
 
-  // ── Voz: el WAV lo genera el backend (espeak-ng) y acá solo se reproduce.
-  // El Silk del Fire TV no tiene voz propia, pero reproducir audio sí funciona.
-  const reproducirVoz = useCallback(async (query) => {
-    const ctx = audioRef.current;
-    if (!ctx) return;
-    let res;
-    try {
-      res = await api.get(`/api/pantalla-tk9x2/voz?${query}`, { responseType: 'arraybuffer' });
-    } catch {
-      return; // sin voz del server: al menos ya sonó el beep
-    }
-    await new Promise((resolve) => {
+  // ── Voz: clips grabados por el usuario (dígito por dígito). Se reproducen con
+  // Web Audio, que sí funciona en el Silk del Fire TV. Sin TTS ni servidor.
+  const precargarClips = useCallback(async (ctx) => {
+    await Promise.all(CLAVES_CLIPS.map(async (k) => {
       try {
-        // Forma con callbacks para máxima compatibilidad con Silk (Chromium viejo)
-        ctx.decodeAudioData(
-          res.data,
-          (buf) => {
-            const src = ctx.createBufferSource();
-            src.buffer = buf;
-            src.connect(ctx.destination);
-            src.onended = resolve;
-            src.start();
-          },
-          () => resolve()
-        );
-      } catch {
-        resolve();
-      }
-    });
+        const r = await fetch(`/voz/${k}.mp3`);
+        const ab = await r.arrayBuffer();
+        const buf = await new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej));
+        clipsRef.current[k] = buf;
+      } catch { /* clip faltante: se ignora */ }
+    }));
   }, []);
 
-  // Encolar para que varias voces suenen una tras otra, no encimadas
-  const encolarVoz = useCallback((query) => {
-    vozQueueRef.current = vozQueueRef.current.then(() => reproducirVoz(query)).catch(() => {});
-  }, [reproducirVoz]);
+  // Programa una secuencia de clips uno tras otro, sin encimarse con lo ya encolado
+  const reproducirSecuencia = useCallback((claves, retrasoInicial = 0) => {
+    const ctx = audioRef.current;
+    if (!ctx) return;
+    const GAP = 0.04; // separación entre clips (s)
+    let t = Math.max(ctx.currentTime + 0.02 + retrasoInicial, cursorRef.current);
+    for (const k of claves) {
+      const buf = clipsRef.current[k];
+      if (!buf) continue;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(t);
+      t += buf.duration + GAP;
+    }
+    cursorRef.current = t;
+  }, []);
 
-  const decirTicket = useCallback((numero) => encolarVoz(`n=${numero}`), [encolarVoz]);
+  // "Ticket" + cada dígito del número (14532 -> ticket,1,4,5,3,2)
+  const decirTicket = useCallback((numero) => {
+    reproducirSecuencia(['ticket', ...String(numero).split('')]);
+  }, [reproducirSecuencia]);
 
   // ── Activación del audio (un solo toque al configurar la tele) ────────────
-  const activar = useCallback(() => {
+  const activar = useCallback(async () => {
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (Ctx) {
         const ctx = new Ctx();
         if (ctx.state === 'suspended') ctx.resume();
         audioRef.current = ctx;
+        cursorRef.current = ctx.currentTime;
       }
     } catch { /* sin Web Audio: seguimos sin beep */ }
 
-    activadoRef.current = true;
     setActivado(true);
 
-    // Confirmación inmediata: suena el beep y la voz dice "Sonido activado".
-    // Así, al configurar la tele, confirmás al instante que el audio funciona.
+    // Confirmación inmediata al configurar la tele: beep + "Sonido activado".
     beep();
-    encolarVoz('activado=1');
-  }, [beep, encolarVoz]);
+    if (audioRef.current) await precargarClips(audioRef.current);
+    activadoRef.current = true;
+    reproducirSecuencia(['activado'], 0.7); // después del beep
+  }, [beep, precargarClips, reproducirSecuencia]);
 
   // ── Carga de datos + detección de tickets nuevos ──────────────────────────
   const cargar = useCallback(async () => {
@@ -128,6 +131,9 @@ export default function Pantalla() {
         const nuevos = lista.filter(v => !seenRef.current.has(v.id));
         if (nuevos.length && activadoRef.current) {
           beep();
+          // Que la voz arranque después del beep (~0.7s)
+          const ctx = audioRef.current;
+          if (ctx) cursorRef.current = Math.max(cursorRef.current, ctx.currentTime + 0.7);
           [...nuevos].reverse().forEach(v => decirTicket(v.numero_ticket));
         }
         nuevos.forEach(v => seenRef.current.add(v.id));
