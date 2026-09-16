@@ -62,4 +62,17 @@ const ventasRecientes = async (req, res) => {
   }
 };
 
-module.exports = { ventasRecientes };
+// GET /api/pantalla-tk9x2/mensajes — PÚBLICO. Mensajes activos de la cinta.
+const mensajesPublicos = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT texto FROM mensajes_pantalla WHERE activo = 1 ORDER BY orden ASC, id ASC'
+    );
+    res.json({ mensajes: rows.map(r => r.texto) });
+  } catch (err) {
+    console.error('pantalla mensajes error:', err);
+    res.status(500).json({ error: 'Error al obtener mensajes' });
+  }
+};
+
+module.exports = { ventasRecientes, mensajesPublicos };

@@ -53,6 +53,7 @@ app.use('/api/auditoria', require('./routes/auditoria'));
 app.use('/api/ventas', require('./routes/ventas'));
 app.use('/api/apartados', require('./routes/apartados'));
 app.use('/api/pantalla-tk9x2', require('./routes/pantalla')); // pública, sin login
+app.use('/api/mensajes', require('./routes/mensajes'));
 
 // Health check (must be before the SPA catch-all)
 app.get('/api/health', (req, res) => {
@@ -161,6 +162,22 @@ const pool = require('./db');
     }
   } catch (err) {
     console.error('Migración movimientos.tipo:', err.message);
+  }
+
+  // ── Migración: mensajes de la cinta de la Pantalla TV ────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS mensajes_pantalla (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        texto VARCHAR(500) NOT NULL,
+        activo TINYINT(1) NOT NULL DEFAULT 1,
+        orden INT NOT NULL DEFAULT 0,
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    console.log('✔ Migración: tabla mensajes_pantalla lista');
+  } catch (err) {
+    console.error('Migración mensajes_pantalla:', err.message);
   }
 })();
 

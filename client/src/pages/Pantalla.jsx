@@ -37,6 +37,7 @@ function opacidadPorEdad(s) {
 
 export default function Pantalla() {
   const [ventas, setVentas] = useState([]);
+  const [mensajes, setMensajes] = useState([]);
   const [activado, setActivado] = useState(false);
   const [pagina, setPagina] = useState(0);
   const [, setTick] = useState(0); // fuerza re-render cada segundo (edades, reloj)
@@ -177,6 +178,20 @@ export default function Pantalla() {
     return () => clearInterval(id);
   }, []);
 
+  // Mensajes de la cinta (se escriben en el panel admin). Refresca cada 30s.
+  useEffect(() => {
+    const cargarMensajes = async () => {
+      try {
+        const res = await api.get('/api/pantalla-tk9x2/mensajes');
+        const arr = res.data?.mensajes;
+        setMensajes(Array.isArray(arr) ? arr.filter(t => t && t.trim()) : []);
+      } catch { /* ignore */ }
+    };
+    cargarMensajes();
+    const id = setInterval(cargarMensajes, 30000);
+    return () => clearInterval(id);
+  }, []);
+
   // Auto-paginado en horas pico (rota entre páginas si no caben todos)
   useEffect(() => {
     const paginas = Math.ceil(ventas.length / PER_PAGE) || 1;
@@ -286,6 +301,19 @@ export default function Pantalla() {
         </>
       )}
 
+      {mensajes.length > 0 && (() => {
+        const contenido = mensajes.join('  •  ') + '  •  ';
+        const dur = Math.max(20, Math.min(120, contenido.length * 0.22));
+        return (
+          <div className="pt-ticker">
+            <div className="pt-ticker-track" style={{ animationDuration: `${dur}s` }}>
+              <span>{contenido}</span>
+              <span aria-hidden="true">{contenido}</span>
+            </div>
+          </div>
+        );
+      })()}
+
       {!activado && (
         <div className="pt-overlay" onClick={activar} role="button">
           <div className="pt-overlay-inner">
@@ -388,6 +416,21 @@ const css = `
   }
   .pt-empty-icon { font-size: 10vw; opacity: 0.7; }
   .pt-empty-text { font-size: 3.4vw; font-weight: 800; }
+
+  .pt-ticker {
+    flex-shrink: 0; margin-top: 1.2vh; background: #CC0000; border-radius: 0.7vw;
+    overflow: hidden; white-space: nowrap;
+  }
+  .pt-ticker-track {
+    display: inline-block; white-space: nowrap; will-change: transform;
+    animation-name: ptMarquee; animation-timing-function: linear; animation-iteration-count: infinite;
+    padding: 0.9vh 0;
+  }
+  .pt-ticker-track span {
+    display: inline-block; font-size: calc(var(--fs) * 1.7vw); font-weight: 800;
+    color: #fff; letter-spacing: 0.02em;
+  }
+  @keyframes ptMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
   .pt-overlay {
     position: fixed; inset: 0; background: rgba(3,10,26,0.94);

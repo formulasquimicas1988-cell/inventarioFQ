@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Tag, ArrowDownCircle, ArrowUpCircle,
   SlidersHorizontal, History, Bell, FileBarChart2, ChevronLeft, ChevronRight,
-  PackageX, ShieldCheck, ShoppingCart, ClipboardList, Bookmark
+  PackageX, ShieldCheck, ShoppingCart, ClipboardList, Bookmark, Megaphone
 } from 'lucide-react'
 import { useAlerts } from '../context/AlertContext'
 import { useUser } from '../context/UserContext'
@@ -26,6 +26,7 @@ const INVENTARIO_ITEMS = [
 const ADMIN_EXTRAS = [
   { path: '/caja', label: 'Caja', icon: ShoppingCart },
   { path: '/ventas', label: 'Ventas', icon: ClipboardList },
+  { path: '/mensajes', label: 'Pantalla TV', icon: Megaphone },
 ]
 
 export default function Sidebar({ mobileOpen, onMobileClose }) {
