@@ -272,7 +272,10 @@ const anularVenta = async (req, res) => {
     const { id } = req.params;
     const { usuario, motivo } = req.body;
 
-    const [ventas] = await conn.query('SELECT * FROM ventas WHERE id = ?', [id]);
+    // FOR UPDATE: bloquea la fila durante la anulación. Si "Anular" se manda dos
+    // veces a la vez, la segunda espera y ya ve anulada = 1 → la rechaza. Sin el
+    // bloqueo ambas leerían anulada = 0 y se devolvería el stock DOS veces.
+    const [ventas] = await conn.query('SELECT * FROM ventas WHERE id = ? FOR UPDATE', [id]);
     if (ventas.length === 0) {
       await conn.rollback();
       return res.status(404).json({ error: 'Venta no encontrada' });

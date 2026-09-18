@@ -1261,10 +1261,24 @@ export default function Caja() {
   // Protección contra doble cobro: el ref bloquea de forma síncrona (el estado
   // `cobrando` no alcanza a actualizarse entre dos Enter/clics seguidos)
   const cobrandoRef = useRef(false);
-  // UID de idempotencia: se mantiene entre reintentos del mismo carrito para que
-  // el servidor no registre la venta dos veces; se descarta si el carrito cambia
+  // UID de idempotencia ("boleto" de la venta). Se genera una sola vez por cobro
+  // y se MANTIENE ESTABLE mientras el carrito tenga productos, aunque se editen
+  // cantidades o se agreguen/quiten ítems. Así, si el mismo cobro se manda dos
+  // veces (doble clic, Enter repetido, reintento por lentitud de red), ambos
+  // envíos llevan el MISMO boleto y el servidor rechaza la copia gracias al
+  // índice UNIQUE de client_uid.
+  //
+  // Antes se borraba en CADA cambio del carrito (`[carrito]`), lo que hacía que
+  // un reenvío del mismo cobro saliera con un boleto NUEVO y el servidor lo
+  // aceptara como venta distinta → tickets duplicados (p. ej. 14967/14968).
+  //
+  // Ahora solo se descarta cuando el carrito queda VACÍO (venta completada,
+  // puesta en espera o vaciada), que es justo cuando empieza otra venta y toca
+  // un boleto nuevo.
   const ventaUidRef = useRef(null);
-  useEffect(() => { ventaUidRef.current = null; }, [carrito]);
+  useEffect(() => {
+    if (carrito.length === 0) ventaUidRef.current = null;
+  }, [carrito.length]);
 
   // ── Cargar productos ──────────────────────────────────────────────────────
 

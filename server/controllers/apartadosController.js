@@ -244,7 +244,9 @@ const actualizarApartado = async (req, res) => {
     const { id } = req.params;
     const { nombre_cliente, telefono, notas, items, usuario } = req.body;
 
-    const [aps] = await conn.query('SELECT * FROM apartados WHERE id = ?', [id]);
+    // FOR UPDATE: bloquea la fila para que dos ediciones simultáneas del mismo
+    // apartado no se pisen (restaurar/descontar stock dos veces).
+    const [aps] = await conn.query('SELECT * FROM apartados WHERE id = ? FOR UPDATE', [id]);
     if (aps.length === 0) {
       await conn.rollback();
       return res.status(404).json({ error: 'Apartado no encontrado' });
@@ -386,7 +388,13 @@ const entregarApartado = async (req, res) => {
     const { id } = req.params;
     const { usuario_id, usuario, efectivo_recibido } = req.body;
 
-    const [apartados] = await conn.query('SELECT * FROM apartados WHERE id = ?', [id]);
+    // FOR UPDATE: bloquea la fila del apartado durante toda la transacción. Si
+    // "Entregar" se manda dos veces (doble clic, Enter repetido, reintento por
+    // red lenta o dos computadoras), la segunda petición espera a que la primera
+    // termine y entonces ve el estado ya en 'entregado' → la rechaza. Sin este
+    // bloqueo ambas leerían 'activo' a la vez y se crearían DOS tickets para un
+    // mismo apartado.
+    const [apartados] = await conn.query('SELECT * FROM apartados WHERE id = ? FOR UPDATE', [id]);
     if (apartados.length === 0) {
       await conn.rollback();
       return res.status(404).json({ error: 'Apartado no encontrado' });
@@ -492,7 +500,9 @@ const cancelarApartado = async (req, res) => {
     const { id } = req.params;
     const { usuario, motivo } = req.body;
 
-    const [apartados] = await conn.query('SELECT * FROM apartados WHERE id = ?', [id]);
+    // FOR UPDATE: serializa cancelaciones concurrentes. Sin el bloqueo, un doble
+    // envío devolvería el stock DOS veces (ambas leen 'activo' a la vez).
+    const [apartados] = await conn.query('SELECT * FROM apartados WHERE id = ? FOR UPDATE', [id]);
     if (apartados.length === 0) {
       await conn.rollback();
       return res.status(404).json({ error: 'Apartado no encontrado' });
