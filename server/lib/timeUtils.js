@@ -13,4 +13,16 @@ function nowHN() {
          `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-module.exports = { nowHN };
+/**
+ * Igual que nowHN() pero restando `segundos`. Devuelve un string DATETIME en
+ * hora de Honduras, útil para comparar contra la columna `fecha` (que se guarda
+ * con nowHN) sin usar NOW()/CONVERT_TZ de MySQL (que en Railway están en UTC).
+ */
+function hnMenosSegundos(segundos) {
+  const d = new Date(Date.now() - segundos * 1000);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+module.exports = { nowHN, hnMenosSegundos };

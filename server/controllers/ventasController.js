@@ -1,7 +1,16 @@
+const crypto = require('crypto');
 const pool = require('../db');
 const { logAudit, getClientIp } = require('../lib/audit');
-const { nowHN } = require('../lib/timeUtils');
+const { nowHN, hnMenosSegundos } = require('../lib/timeUtils');
 const { buildSearch } = require('../lib/search');
+
+// Firma normalizada de un carrito: mismos productos + cantidad + precio producen
+// la MISMA firma, sin importar el orden de los renglones. Sirve para reconocer
+// una venta idéntica repetida aunque llegue con otro client_uid.
+const firmaVenta = (items) => (Array.isArray(items) ? items : [])
+  .map(i => `${i.producto_id ?? ''}·${String(i.descripcion || '').trim().toLowerCase()}·${Number(i.cantidad)}·${Number(i.precio_unitario)}`)
+  .sort()
+  .join('|');
 
 // GET /api/ventas
 const getAll = async (req, res) => {
@@ -89,17 +98,14 @@ const getById = async (req, res) => {
 // POST /api/ventas — cobrar venta completa
 const cobrarVenta = async (req, res) => {
   const conn = await pool.getConnection();
+  let lockName = null;
   try {
-    await conn.beginTransaction();
-
     const { usuario_id, usuario, nombre_cliente, efectivo_recibido, items, client_uid } = req.body;
 
     if (!usuario_id) {
-      await conn.rollback();
       return res.status(400).json({ error: 'Se requiere usuario_id. Por favor cierra sesión y vuelve a entrar.' });
     }
     if (!Array.isArray(items) || items.length === 0) {
-      await conn.rollback();
       return res.status(400).json({ error: 'El carrito está vacío' });
     }
 
@@ -113,6 +119,45 @@ const cobrarVenta = async (req, res) => {
     // Efectivo y cambio solo aplican cuando el pago es en efectivo.
     const efectivo = esEfectivo && efectivo_recibido ? parseFloat(efectivo_recibido) : null;
     const cambio = efectivo != null ? Math.max(0, efectivo - total) : null;
+
+    // ── Candado anti-duplicado DEL LADO DEL SERVIDOR ────────────────────────
+    // No depende del navegador de la caja, ni de recargas, ni del client_uid.
+    // 1) GET_LOCK serializa por "cajero + total + productos": si el mismo cobro
+    //    llega dos veces a la vez, la segunda espera a que termine la primera.
+    // 2) Ya con el candado, si ese cajero registró una venta IDÉNTICA en los
+    //    últimos 25 s, se devuelve esa en vez de crear otra. Así se cortan los
+    //    duplicados por doble clic/Enter aunque cada envío traiga otro uid.
+    const firmaNueva = firmaVenta(items);
+    lockName = 'fq_v_' + crypto.createHash('sha1')
+      .update(`${usuario_id}|${total.toFixed(2)}|${firmaNueva}`)
+      .digest('hex').slice(0, 48);
+    try { await conn.query('SELECT GET_LOCK(?, 10)', [lockName]); } catch (_) { /* si falla el lock, seguimos igual */ }
+
+    const corte = hnMenosSegundos(25);
+    const [recientes] = await conn.query(
+      `SELECT id, numero_ticket, total, cambio FROM ventas
+       WHERE usuario_id = ? AND ABS(total - ?) < 0.01 AND (anulada = 0 OR anulada IS NULL) AND fecha >= ?
+       ORDER BY id DESC LIMIT 5`,
+      [usuario_id, total, corte]
+    );
+    for (const r of recientes) {
+      const [d] = await conn.query(
+        'SELECT producto_id, descripcion, cantidad, precio_unitario FROM detalle_ventas WHERE venta_id = ?',
+        [r.id]
+      );
+      if (firmaVenta(d) === firmaNueva) {
+        // Venta idéntica reciente: es la misma, no la duplicamos.
+        return res.status(200).json({
+          id: r.id,
+          numero_ticket: r.numero_ticket || r.id,
+          total: parseFloat(r.total),
+          cambio: r.cambio != null ? parseFloat(r.cambio) : null,
+          duplicada: true,
+        });
+      }
+    }
+
+    await conn.beginTransaction();
 
     // Insertar venta — numero_ticket se sincroniza con el id (AUTO_INCREMENT) después del insert.
     // client_uid tiene índice UNIQUE: si el mismo cobro llega dos veces (doble clic,
@@ -255,10 +300,13 @@ const cobrarVenta = async (req, res) => {
 
     res.status(201).json({ id: ventaId, numero_ticket: numeroTicket ?? ventaId, total, cambio });
   } catch (err) {
-    await conn.rollback();
+    try { await conn.rollback(); } catch (_) { /* puede no haber transacción activa */ }
     console.error('cobrarVenta error:', err);
     res.status(500).json({ error: 'Error al procesar la venta' });
   } finally {
+    if (lockName) {
+      try { await conn.query('SELECT RELEASE_LOCK(?)', [lockName]); } catch (_) { /* ignorar */ }
+    }
     conn.release();
   }
 };
