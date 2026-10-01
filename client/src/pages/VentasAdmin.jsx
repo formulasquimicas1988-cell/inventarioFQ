@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Search, Eye, XCircle, Pencil, AlertCircle, Check, Trash2, Plus } from 'lucide-react';
+import { Search, Eye, XCircle, Pencil, AlertCircle, Check, Trash2, Plus, RotateCcw } from 'lucide-react';
 import api from '../lib/api';
 import { useUser } from '../context/UserContext';
 import { useToast } from '../context/ToastContext';
@@ -14,7 +14,7 @@ const fmt = (v) => `L ${parseFloat(v || 0).toFixed(2)}`;
 
 // ── Modal detalle de venta ────────────────────────────────────────────────────
 
-function DetalleModal({ venta, usuarioId, onClose, onAnular, onEditDetalle, onDeleteDetalle, onAgregarDetalle, onMetodoActualizado, anulando, deletingId }) {
+function DetalleModal({ venta, usuarioId, onClose, onAnular, onReactivar, onEditDetalle, onDeleteDetalle, onAgregarDetalle, onMetodoActualizado, anulando, reactivando, deletingId }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [metodo, setMetodo] = useState('efectivo');
   const [guardandoMetodo, setGuardandoMetodo] = useState(false);
@@ -243,8 +243,17 @@ function DetalleModal({ venta, usuarioId, onClose, onAnular, onEditDetalle, onDe
           </div>
 
           {/* Acciones */}
-          {!venta.anulada && (
-            <div className="flex justify-end gap-3 pt-2 border-t">
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            {venta.anulada ? (
+              <SafeButton
+                onClick={onReactivar}
+                loading={reactivando}
+                variant="secondary"
+              >
+                <RotateCcw size={16} />
+                Reactivar venta
+              </SafeButton>
+            ) : (
               <SafeButton
                 onClick={onAnular}
                 loading={anulando}
@@ -253,8 +262,8 @@ function DetalleModal({ venta, usuarioId, onClose, onAnular, onEditDetalle, onDe
                 <XCircle size={16} />
                 Anular venta
               </SafeButton>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </Modal>
@@ -571,6 +580,8 @@ export default function VentasAdmin() {
   const [editDetalleItem, setEditDetalleItem] = useState(null);
   const [anulando, setAnulando] = useState(false);
   const [showMotivo, setShowMotivo] = useState(false);
+  const [reactivando, setReactivando] = useState(false);
+  const [showReactivar, setShowReactivar] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [deletingDetalleId, setDeletingDetalleId] = useState(null);
   const [agregarDetalleOpen, setAgregarDetalleOpen] = useState(false);
@@ -627,6 +638,26 @@ export default function VentasAdmin() {
 
   const handleAnular = () => {
     setShowMotivo(true);
+  };
+
+  const handleReactivar = () => {
+    setShowReactivar(true);
+  };
+
+  const confirmarReactivacion = async () => {
+    if (!ventaDetalle) return;
+    setReactivando(true);
+    try {
+      const res = await api.put(`/api/ventas/${ventaDetalle.id}/reactivar`, { usuario_id: usuarioId, usuario });
+      success(res.data?.message || `Venta #${ventaDetalle.id} reactivada`);
+      setVentaDetalle(null);
+      setShowReactivar(false);
+      fetchVentas(search, fechaInicio, fechaFin, anuladas, page);
+    } catch (err) {
+      error(err.message || 'Error al reactivar la venta');
+    } finally {
+      setReactivando(false);
+    }
   };
 
   const confirmarAnulacion = async () => {
@@ -789,8 +820,9 @@ export default function VentasAdmin() {
       <DetalleModal
         venta={ventaDetalle}
         usuarioId={usuarioId}
-        onClose={() => { setVentaDetalle(null); setShowMotivo(false); setMotivo(''); }}
+        onClose={() => { setVentaDetalle(null); setShowMotivo(false); setShowReactivar(false); setMotivo(''); }}
         onAnular={handleAnular}
+        onReactivar={handleReactivar}
         onEditDetalle={(d) => setEditDetalleItem(d)}
         onDeleteDetalle={handleDeleteDetalle}
         onAgregarDetalle={() => setAgregarDetalleOpen(true)}
@@ -799,8 +831,40 @@ export default function VentasAdmin() {
           fetchVentas(search, fechaInicio, fechaFin, anuladas, page);
         }}
         anulando={anulando}
+        reactivando={reactivando}
         deletingId={deletingDetalleId}
       />
+
+      {/* Modal confirmación reactivación */}
+      <Modal
+        isOpen={showReactivar}
+        onClose={() => setShowReactivar(false)}
+        title="Reactivar venta"
+        size="sm"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-brand-blue">
+            <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+            <p>
+              La venta <strong>#{ventaDetalle?.id}</strong> volverá a contar en caja
+              y reportes, y los productos se descontarán otra vez del inventario.
+              Úsalo solo si la anulación fue por error.
+            </p>
+          </div>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setShowReactivar(false)}
+              className="min-h-[40px] px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium"
+            >
+              Cancelar
+            </button>
+            <SafeButton onClick={confirmarReactivacion} loading={reactivando} variant="secondary">
+              <RotateCcw size={16} />
+              Sí, reactivar
+            </SafeButton>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal confirmación anulación */}
       <Modal

@@ -385,6 +385,127 @@ const anularVenta = async (req, res) => {
   }
 };
 
+// PUT /api/ventas/:id/reactivar — solo admin
+// Deshace una anulación: vuelve a descontar el inventario y regenera los
+// movimientos que "anular" había borrado. Pensado para cuando se anula la
+// venta equivocada.
+const reactivarVenta = async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { id } = req.params;
+    const { usuario, motivo } = req.body;
+
+    // Mismo candado que en anular: si llegan dos "Reactivar" a la vez, la
+    // segunda espera y ya ve anulada = 0 → la rechaza. Sin el bloqueo ambas
+    // descontarían el stock.
+    const [ventas] = await conn.query('SELECT * FROM ventas WHERE id = ? FOR UPDATE', [id]);
+    if (ventas.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+    if (!ventas[0].anulada) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'La venta ya está activa' });
+    }
+    const venta = ventas[0];
+
+    // Si por algún motivo la venta conserva movimientos vivos, el stock nunca
+    // se devolvió: solo se reactiva la venta, sin volver a descontar.
+    const [movsVivos] = await conn.query(
+      'SELECT COUNT(*) AS n FROM movimientos WHERE venta_id = ? AND (cancelado = 0 OR cancelado IS NULL)',
+      [id]
+    );
+    const yaDescontado = parseInt(movsVivos[0].n) > 0;
+
+    if (!yaDescontado) {
+      const [detalles] = await conn.query('SELECT * FROM detalle_ventas WHERE venta_id = ?', [id]);
+
+      for (const det of detalles) {
+        if (!det.producto_id || det.sin_inventario) continue;
+
+        const [prods] = await conn.query(
+          'SELECT id, stock_actual, producto_base_id FROM productos WHERE id = ? AND activo = 1',
+          [det.producto_id]
+        );
+        if (prods.length === 0) continue; // producto eliminado, saltar
+
+        const stockProductId = prods[0].producto_base_id || prods[0].id;
+
+        const [baseProds] = await conn.query(
+          'SELECT id, stock_actual FROM productos WHERE id = ? FOR UPDATE',
+          [stockProductId]
+        );
+        if (baseProds.length === 0) continue;
+
+        const qty = Math.round(parseFloat(det.cantidad) || 0);
+        if (qty <= 0) continue;
+
+        const stockAnterior = parseInt(baseProds[0].stock_actual);
+        if (stockAnterior < qty) {
+          await conn.rollback();
+          return res.status(409).json({
+            error: `Stock insuficiente para "${det.descripcion}": hay ${stockAnterior} en existencia pero la venta lleva ${qty}. Ajusta el inventario antes de reactivarla.`,
+          });
+        }
+
+        const stockResultante = stockAnterior - qty;
+
+        await conn.query(
+          'UPDATE productos SET stock_actual = ? WHERE id = ?',
+          [stockResultante, stockProductId]
+        );
+
+        await conn.query(
+          `INSERT INTO movimientos (producto_id, tipo, cantidad, cantidad_anterior, stock_resultante,
+            cliente, notas, usuario, venta_id, fecha)
+           VALUES (?, 'salida', ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            stockProductId,
+            qty,
+            stockAnterior,
+            stockResultante,
+            venta.nombre_cliente?.trim() || 'Venta directa',
+            `Venta #${id} (reactivada)`,
+            usuario || null,
+            id,
+            nowHN(),
+          ]
+        );
+      }
+    }
+
+    await conn.query(
+      'UPDATE ventas SET anulada = 0, motivo_anulacion = NULL WHERE id = ?',
+      [id]
+    );
+
+    await conn.commit();
+
+    const ip = getClientIp(req);
+    await logAudit({
+      usuario,
+      accion: 'reactivó',
+      modulo: 'Venta',
+      detalle: `Reactivó venta #${id} (anulación deshecha)${motivo ? `: ${motivo}` : ''}`,
+      ip,
+    });
+
+    res.json({
+      message: yaDescontado
+        ? 'Venta reactivada correctamente'
+        : 'Venta reactivada y stock descontado nuevamente',
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error('reactivarVenta error:', err);
+    res.status(500).json({ error: 'Error al reactivar la venta' });
+  } finally {
+    conn.release();
+  }
+};
+
 // PUT /api/ventas/:id/detalle/:detalleId — solo admin
 const editarDetalle = async (req, res) => {
   const conn = await pool.getConnection();
@@ -728,4 +849,4 @@ const actualizarMetodoPago = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getById, cobrarVenta, anularVenta, editarDetalle, agregarDetalle, eliminarDetalle, actualizarMetodoPago };
+module.exports = { getAll, getById, cobrarVenta, anularVenta, reactivarVenta, editarDetalle, agregarDetalle, eliminarDetalle, actualizarMetodoPago };
