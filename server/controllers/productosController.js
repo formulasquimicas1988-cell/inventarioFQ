@@ -3,6 +3,17 @@ const XLSX = require('xlsx');
 const { logAudit, getClientIp } = require('../lib/audit');
 const { buildSearch } = require('../lib/search');
 
+// El precio de costo es información confidencial: solo el admin lo ve y lo edita.
+// authMiddleware deja el usuario del token en req.user = { id, nombre, rol }.
+const esAdmin = (req) => req.user?.rol === 'admin';
+
+// Quita precio_costo de las filas que se devuelven a un usuario no admin
+const ocultarCosto = (req, rows) => {
+  if (esAdmin(req)) return rows;
+  for (const row of rows) delete row.precio_costo;
+  return rows;
+};
+
 // GET /api/productos
 const getAll = async (req, res) => {
   try {
@@ -53,7 +64,7 @@ const getAll = async (req, res) => {
     );
 
     const totalPages = Math.ceil(total / parseInt(limit)) || 1;
-    res.json({ data: rows, total, page: parseInt(page), limit: parseInt(limit), totalPages });
+    res.json({ data: ocultarCosto(req, rows), total, page: parseInt(page), limit: parseInt(limit), totalPages });
   } catch (err) {
     console.error('getAll productos error:', err);
     res.status(500).json({ error: 'Error al obtener productos' });
@@ -72,7 +83,7 @@ const getById = async (req, res) => {
       [req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
-    res.json(rows[0]);
+    res.json(ocultarCosto(req, rows)[0]);
   } catch (err) {
     console.error('getById producto error:', err);
     res.status(500).json({ error: 'Error al obtener producto' });
@@ -83,7 +94,7 @@ const getById = async (req, res) => {
 const create = async (req, res) => {
   try {
     const { codigo, nombre, categoria_id, categoria_id_2, stock_actual, stock_minimo, unidad_medida,
-            precio_a, precio_b, precio_c, precio_d,
+            precio_costo, precio_a, precio_b, precio_c, precio_d,
             favorito, sin_inventario, descripcion_editable, es_grupo, producto_base_id } = req.body;
 
     if (!codigo || !codigo.trim()) return res.status(400).json({ error: 'El código es requerido' });
@@ -98,9 +109,9 @@ const create = async (req, res) => {
 
     const [result] = await pool.query(
       `INSERT INTO productos (codigo, nombre, categoria_id, categoria_id_2, stock_actual, stock_minimo, unidad_medida,
-        precio_a, precio_b, precio_c, precio_d,
+        precio_costo, precio_a, precio_b, precio_c, precio_d,
         favorito, sin_inventario, descripcion_editable, es_grupo, producto_base_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         codigo.trim(),
         nombre.trim(),
@@ -109,6 +120,7 @@ const create = async (req, res) => {
         parseInt(stock_actual) || 0,
         parseInt(stock_minimo) || 0,
         unidad_medida.trim(),
+        esAdmin(req) && precio_costo != null && precio_costo !== '' ? parseFloat(precio_costo) : null,
         precio_a != null && precio_a !== '' ? parseFloat(precio_a) : null,
         precio_b != null && precio_b !== '' ? parseFloat(precio_b) : null,
         precio_c != null && precio_c !== '' ? parseFloat(precio_c) : null,
@@ -155,7 +167,7 @@ const update = async (req, res) => {
   try {
     const { id } = req.params;
     const { codigo, nombre, categoria_id, categoria_id_2, stock_minimo, unidad_medida,
-            precio_a, precio_b, precio_c, precio_d,
+            precio_costo, precio_a, precio_b, precio_c, precio_d,
             favorito, sin_inventario, descripcion_editable, es_grupo, producto_base_id } = req.body;
 
     if (!codigo || !codigo.trim()) return res.status(400).json({ error: 'El código es requerido' });
@@ -168,9 +180,14 @@ const update = async (req, res) => {
       return res.status(400).json({ error: `Ya existe otro producto con el código ${codigo.trim()}` });
     }
 
+    // El precio de costo solo lo cambia el admin, y solo si lo envía: así los
+    // formularios que no lo incluyen (ej. editar precios desde la caja) no lo borran
+    const editaCosto = esAdmin(req) && Object.prototype.hasOwnProperty.call(req.body, 'precio_costo');
+
     // NOTE: stock_actual is NOT updated here — only via movements
     const [result] = await pool.query(
       `UPDATE productos SET codigo = ?, nombre = ?, categoria_id = ?, categoria_id_2 = ?, stock_minimo = ?, unidad_medida = ?,
+        ${editaCosto ? 'precio_costo = ?,' : ''}
         precio_a = ?, precio_b = ?, precio_c = ?, precio_d = ?,
         favorito = ?, sin_inventario = ?, descripcion_editable = ?, es_grupo = ?, producto_base_id = ?
        WHERE id = ?`,
@@ -181,6 +198,7 @@ const update = async (req, res) => {
         categoria_id_2 || null,
         parseInt(stock_minimo) || 0,
         unidad_medida.trim(),
+        ...(editaCosto ? [precio_costo != null && precio_costo !== '' ? parseFloat(precio_costo) : null] : []),
         precio_a != null && precio_a !== '' ? parseFloat(precio_a) : null,
         precio_b != null && precio_b !== '' ? parseFloat(precio_b) : null,
         precio_c != null && precio_c !== '' ? parseFloat(precio_c) : null,
@@ -245,6 +263,8 @@ const importarExcel = async (req, res) => {
 
     if (!data.length) return res.status(400).json({ error: 'El archivo Excel está vacío' });
 
+    const puedeImportarCosto = esAdmin(req);
+
     let insertados = 0;
     let actualizados = 0;
     const errores = [];
@@ -260,6 +280,11 @@ const importarExcel = async (req, res) => {
       const stockActual = parseInt(row['stock_actual'] || row['Stock Actual'] || row['stock actual'] || row['stock'] || 0) || 0;
       const stockMinimo = parseInt(row['stock_minimo'] || row['Stock Minimo'] || row['stock minimo'] || row['min_stock'] || 0) || 0;
       const unidad = (row['unidad_medida'] || row['Unidad'] || row['UNIDAD'] || row['unit'] || '').toString().trim();
+      // La columna de costo del Excel solo se toma en cuenta si importa un admin
+      const costoRaw = puedeImportarCosto
+        ? (row['precio_costo'] || row['Precio Costo'] || row['precio costo'] || row['costo'] || row['Costo'] || row['cost'] || '').toString().trim()
+        : '';
+      const precioCosto = costoRaw !== '' && !isNaN(parseFloat(costoRaw)) ? parseFloat(costoRaw) : null;
       if (!codigo) { errores.push(`Fila ${rowNum}: código vacío`); continue; }
       if (!nombre) { errores.push(`Fila ${rowNum}: nombre vacío`); continue; }
       if (!unidad) { errores.push(`Fila ${rowNum}: unidad de medida vacía`); continue; }
@@ -274,17 +299,21 @@ const importarExcel = async (req, res) => {
       try {
         const [existing] = await pool.query('SELECT id FROM productos WHERE codigo = ?', [codigo]);
         if (existing.length > 0) {
+          // El costo solo se actualiza si la fila del Excel lo trae
           await pool.query(
-            `UPDATE productos SET nombre = ?, categoria_id = ?, stock_minimo = ?, unidad_medida = ?, activo = 1
+            `UPDATE productos SET nombre = ?, categoria_id = ?, stock_minimo = ?, unidad_medida = ?,
+             ${precioCosto != null ? 'precio_costo = ?,' : ''} activo = 1
              WHERE codigo = ?`,
-            [nombre, categoriaId, stockMinimo, unidad, codigo]
+            precioCosto != null
+              ? [nombre, categoriaId, stockMinimo, unidad, precioCosto, codigo]
+              : [nombre, categoriaId, stockMinimo, unidad, codigo]
           );
           actualizados++;
         } else {
           await pool.query(
-            `INSERT INTO productos (codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [codigo, nombre, categoriaId, stockActual, stockMinimo, unidad]
+            `INSERT INTO productos (codigo, nombre, categoria_id, stock_actual, stock_minimo, unidad_medida, precio_costo)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [codigo, nombre, categoriaId, stockActual, stockMinimo, unidad, precioCosto]
           );
           insertados++;
         }

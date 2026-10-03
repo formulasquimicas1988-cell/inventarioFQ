@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS productos (
   stock_actual INT DEFAULT 0,
   stock_minimo INT DEFAULT 0,
   unidad_medida VARCHAR(50) NOT NULL,
+  precio_costo DECIMAL(10,2) DEFAULT NULL,
   precio_a DECIMAL(10,2) DEFAULT NULL,
   precio_b DECIMAL(10,2) DEFAULT NULL,
   precio_c DECIMAL(10,2) DEFAULT NULL,
@@ -139,6 +140,7 @@ CREATE TABLE IF NOT EXISTS auditoria (
 -- =====================================================
 ALTER TABLE productos ADD COLUMN categoria_id_2 INT DEFAULT NULL;
 ALTER TABLE productos ADD COLUMN es_grupo TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE productos ADD COLUMN precio_costo DECIMAL(10,2) DEFAULT NULL;
 ALTER TABLE productos ADD COLUMN precio_a DECIMAL(10,2) DEFAULT NULL;
 ALTER TABLE productos ADD COLUMN precio_b DECIMAL(10,2) DEFAULT NULL;
 ALTER TABLE productos ADD COLUMN precio_c DECIMAL(10,2) DEFAULT NULL;

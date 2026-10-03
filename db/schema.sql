@@ -44,6 +44,8 @@ CREATE TABLE productos (
   stock_actual INT DEFAULT 0,
   stock_minimo INT DEFAULT 0,
   unidad_medida VARCHAR(50) NOT NULL,
+  -- Precio de costo (lo que cuesta comprar/producir)
+  precio_costo DECIMAL(10,2) DEFAULT NULL,
   -- Precios para la caja (4 niveles)
   precio_a DECIMAL(10,2) DEFAULT NULL,
   precio_b DECIMAL(10,2) DEFAULT NULL,

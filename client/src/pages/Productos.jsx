@@ -15,6 +15,8 @@ import { useUser } from '../context/UserContext';
 
 const UNIDADES = ['Litros', 'Kilos', 'Gramos', 'Unidades', 'Cajas', 'Galones', 'Toneladas', 'Metros'];
 
+const fmt = (v) => `L ${parseFloat(v || 0).toFixed(2)}`;
+
 function getStatusLabel(stockActual, stockMinimo) {
   const s = getStockStatus(stockActual, stockMinimo);
   if (s === 'critico') return 'Crítico';
@@ -31,6 +33,8 @@ const emptyForm = {
   stock_minimo: '',
   unidad_medida: 'Litros',
   unidad_custom: '',
+  // Precio de costo
+  precio_costo: '',
   // Campos de caja
   precio_a: '',
   precio_b: '',
@@ -45,7 +49,9 @@ const emptyForm = {
 
 export default function Productos() {
   const { success, error } = useToast();
-  const { usuario } = useUser();
+  const { usuario, rol } = useUser();
+  // El precio de costo es confidencial: solo el admin lo ve y lo edita
+  const esAdmin = rol === 'admin';
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [search, setSearch] = useState('');
@@ -137,6 +143,8 @@ export default function Productos() {
       stock_minimo: p.stock_minimo != null ? String(p.stock_minimo) : '',
       unidad_medida: isCustom ? '__custom__' : (p.unidad_medida || 'Litros'),
       unidad_custom: isCustom ? (p.unidad_medida || '') : '',
+      // Precio de costo
+      precio_costo: p.precio_costo != null ? String(p.precio_costo) : '',
       // Campos de caja
       precio_a: p.precio_a != null ? String(p.precio_a) : '',
       precio_b: p.precio_b != null ? String(p.precio_b) : '',
@@ -176,6 +184,10 @@ export default function Productos() {
       error('El stock mínimo no puede ser negativo');
       return;
     }
+    if (esAdmin && form.precio_costo !== '' && parseFloat(form.precio_costo) < 0) {
+      error('El precio de costo no puede ser negativo');
+      return;
+    }
     const payload = {
       codigo: form.codigo.trim(),
       nombre: form.nombre.trim(),
@@ -194,6 +206,11 @@ export default function Productos() {
       es_grupo: form.es_grupo ? 1 : 0,
       producto_base_id: form.producto_base_id || null,
     };
+    // Solo el admin envía el costo. Si no se envía la clave, el servidor
+    // conserva el valor que ya estaba guardado en lugar de borrarlo.
+    if (esAdmin) {
+      payload.precio_costo = form.precio_costo !== '' ? parseFloat(form.precio_costo) : null;
+    }
     if (!editItem) {
       payload.stock_actual = form.stock_actual !== '' ? parseFloat(form.stock_actual) : 0;
       payload.usuario = usuario;
@@ -257,7 +274,9 @@ export default function Productos() {
   };
 
   const downloadTemplate = () => {
-    const csvContent = 'codigo,nombre,unidad_medida,categoria,stock_actual,stock_minimo\nEJ001,Ejemplo Producto,Litros,Categoria A,100,10\n';
+    const csvContent = esAdmin
+      ? 'codigo,nombre,unidad_medida,categoria,stock_actual,stock_minimo,precio_costo\nEJ001,Ejemplo Producto,Litros,Categoria A,100,10,45.50\n'
+      : 'codigo,nombre,unidad_medida,categoria,stock_actual,stock_minimo\nEJ001,Ejemplo Producto,Litros,Categoria A,100,10\n';
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -327,6 +346,7 @@ export default function Productos() {
                       { key: 'stock_actual', label: 'Stock Actual', align: 'right' },
                       { key: 'stock_minimo', label: 'Stock Mín.', align: 'right' },
                       { key: 'unidad_medida', label: 'Unidad', align: 'left' },
+                      ...(esAdmin ? [{ key: 'precio_costo', label: 'Costo', align: 'right' }] : []),
                     ].map(({ key, label, align }) => (
                       <th
                         key={key}
@@ -359,6 +379,11 @@ export default function Productos() {
                         {Number(p.stock_minimo || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-3 px-3 text-slate-500">{p.unidad_medida}</td>
+                      {esAdmin && (
+                        <td className="py-3 px-3 text-right text-slate-700">
+                          {p.precio_costo != null ? fmt(p.precio_costo) : '—'}
+                        </td>
+                      )}
                       <td className="py-3 px-3">
                         <span className={`text-xs font-semibold px-2 py-1 rounded-full ${getStockBadge(p.stock_actual, p.stock_minimo)}`}>
                           {getStatusLabel(p.stock_actual, p.stock_minimo)}
@@ -524,6 +549,32 @@ export default function Productos() {
             </div>
           </div>
 
+          {/* ── Precio de costo (solo admin) ── */}
+          {esAdmin && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                Precio de Costo <span className="text-slate-400 normal-case font-normal">· solo administradores</span>
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Costo por {(form.unidad_medida === '__custom__' ? form.unidad_custom : form.unidad_medida) || 'unidad'}
+                  </label>
+                  <input
+                    type="number"
+                    value={form.precio_costo}
+                    onChange={(e) => setForm((f) => ({ ...f, precio_costo: e.target.value }))}
+                    min="0" step="0.01" placeholder="—"
+                    className="w-full min-h-[48px] px-3 py-2 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Lo que cuesta comprar o producir el producto. No se usa para vender en la caja.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Sección de precios para la caja ── */}
           <div className="border-t border-slate-100 pt-4">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Precios de Caja (opcionales)</p>
@@ -636,6 +687,9 @@ export default function Productos() {
               <li><code className="bg-slate-200 px-1 rounded">categoria</code></li>
               <li><code className="bg-slate-200 px-1 rounded">stock_actual</code></li>
               <li><code className="bg-slate-200 px-1 rounded">stock_minimo</code></li>
+              {esAdmin && (
+                <li><code className="bg-slate-200 px-1 rounded">precio_costo</code> — también acepta <code className="bg-slate-200 px-1 rounded">costo</code></li>
+              )}
             </ul>
           </div>
 

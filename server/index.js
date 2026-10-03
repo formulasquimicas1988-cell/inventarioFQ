@@ -164,6 +164,16 @@ const pool = require('./db');
     console.error('Migración movimientos.tipo:', err.message);
   }
 
+  // Columna precio_costo en productos (precio de costo, solo visible para admin). Idempotente.
+  try {
+    await pool.query('ALTER TABLE productos ADD COLUMN precio_costo DECIMAL(10,2) DEFAULT NULL');
+    console.log('✔ Migración: columna precio_costo agregada a productos');
+  } catch (err) {
+    if (err.code !== 'ER_DUP_FIELDNAME') {
+      console.error('Migración precio_costo (columna):', err.message);
+    }
+  }
+
   // ── Migración: mensajes de la cinta de la Pantalla TV ────────────────────
   try {
     await pool.query(`
